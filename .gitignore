@@ -1,0 +1,49 @@
+# ── Python (backend) ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+.venv/
+venv/
+env/
+
+# ── Node (frontend) ───────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+*.local
+
+# ── Secrets / environment ─────────────────────────────────────────────────────
+.env
+*.env
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# ── External binaries ─────────────────────────────────────────────────────────
+bin/
+*.exe
+
+# ── Logs / temp ───────────────────────────────────────────────────────────────
+*.log
+logs/
+tmp/
+*.sqlite3
+*.db
+
+# ── OS / editors ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Claude workspace ──────────────────────────────────────────────────────────
+.claude/

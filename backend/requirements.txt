@@ -1,0 +1,33 @@
+# ── Web framework ────────────────────────────────────────────────
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9          # OAuth2 password form parsing
+sse-starlette>=2.1               # Server-Sent Events responses
+
+# ── ORM / migrations ─────────────────────────────────────────────
+SQLAlchemy[asyncio]>=2.0,<2.1
+alembic>=1.13
+asyncpg>=0.29                    # async Postgres driver (FastAPI)
+psycopg2-binary>=2.9            # sync Postgres driver (Celery, discovery)
+
+# ── Source / target DB drivers (testing + schema discovery) ──────
+PyMySQL>=1.1                     # MySQL
+pymongo>=4.7                     # MongoDB
+# pyodbc>=5.1                    # MSSQL — needs system ODBC driver (phase 2)
+
+# ── Config / validation ──────────────────────────────────────────
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3
+
+# ── Auth / security ──────────────────────────────────────────────
+PyJWT>=2.8
+bcrypt>=4.1
+cryptography>=42.0               # Fernet credential encryption
+
+# ── Task queue ───────────────────────────────────────────────────
+celery>=5.4,<6.0
+redis>=5.0
+
+# ── Utilities ────────────────────────────────────────────────────
+PyYAML>=6.0                      # Redpanda Connect config generation
+email-validator>=2.1             # pydantic EmailStr
