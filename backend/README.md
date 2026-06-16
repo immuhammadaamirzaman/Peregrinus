@@ -8,9 +8,9 @@ background jobs.
 ## Architecture
 
 ```
-React (later)  →  FastAPI (REST + SSE)  →  Celery (Redis/Memurai)  →  Redpanda Connect (subprocess)
-                        │                                                      │
-                        └────────────  PostgreSQL (metadata)  ←───────────────┘
+React (frontend)  →  FastAPI (REST + SSE)  →  Celery (Redis/Memurai)  →  Redpanda Connect (subprocess)
+                            │                                                      │
+                            └────────────  PostgreSQL (metadata)  ←───────────────┘
 ```
 
 * **FastAPI** — auth, connection management, schema discovery, job control, live log streaming (SSE).
