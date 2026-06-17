@@ -16,6 +16,16 @@ from app.models.enums import DBType, SSLMode
 from app.schemas.common import ORMModel
 
 
+# Allowlist of permitted extra_params keys per engine. Anything else is
+# rejected so the free-form dict cannot smuggle arbitrary driver options.
+_ALLOWED_EXTRA_PARAMS: dict[DBType, set[str]] = {
+    DBType.POSTGRES: {"schema", "sslrootcert"},
+    DBType.MYSQL: {"ssl_ca"},
+    DBType.MONGODB: {"uri", "authSource", "replicaSet"},
+    DBType.SQLITE: set(),
+}
+
+
 class _ConnFields(BaseModel):
     """Connectivity fields shared by create / test payloads."""
 
@@ -40,6 +50,13 @@ class _ConnFields(BaseModel):
         ):
             raise ValueError(
                 "MongoDB requires either 'host' or 'extra_params.uri'."
+            )
+        allowed = _ALLOWED_EXTRA_PARAMS.get(self.db_type, set())
+        unknown = set(self.extra_params) - allowed
+        if unknown:
+            raise ValueError(
+                f"Unsupported extra_params for {self.db_type}: "
+                f"{', '.join(sorted(unknown))}. Allowed: {', '.join(sorted(allowed)) or 'none'}."
             )
         return self
 

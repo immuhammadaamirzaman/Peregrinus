@@ -21,6 +21,7 @@ from urllib.parse import quote
 
 import yaml
 
+from app.core import netguard
 from app.models.enums import DBType, SSLMode
 from app.services import filters
 from app.services.schema_discovery import ResolvedConnection
@@ -65,10 +66,12 @@ def build_dsn(rc: ResolvedConnection) -> str:
     auth = f"{user}:{pw}@" if rc.username else ""
 
     if rc.db_type == DBType.POSTGRES:
+        netguard.validate_outbound_host(rc.host)
         sslmode = "disable" if rc.ssl_mode == SSLMode.DISABLE else rc.ssl_mode.value
         return f"postgres://{auth}{rc.host}:{rc.effective_port}/{rc.database}?sslmode={sslmode}"
 
     if rc.db_type == DBType.MYSQL:
+        netguard.validate_outbound_host(rc.host)
         # go-sql-driver/mysql DSN: user:pass@tcp(host:port)/db?params
         params = ["parseTime=true"]
         if rc.ssl_mode == SSLMode.REQUIRE:
@@ -78,11 +81,13 @@ def build_dsn(rc: ResolvedConnection) -> str:
         return f"{auth}tcp({rc.host}:{rc.effective_port})/{rc.database}?{'&'.join(params)}"
 
     if rc.db_type == DBType.SQLITE:
-        return rc.database  # file path
+        return netguard.safe_sqlite_path(rc.database)  # confined file path
 
     if rc.db_type == DBType.MONGODB:
         if uri := rc.extra_params.get("uri"):
+            netguard.validate_mongo_uri(uri)
             return str(uri)
+        netguard.validate_outbound_host(rc.host)
         query = [f"authSource={rc.extra_params.get('authSource', 'admin')}"]
         if rc.ssl_mode != SSLMode.DISABLE:
             query.append("tls=true")
@@ -149,7 +154,13 @@ def _build_input(plan: TablePlan) -> dict:
             }
         }
 
-    columns = [s for s, _ in plan.field_pairs] if plan.field_pairs else ["*"]
+    # Validate every source column identifier (same allowlist as targets) so a
+    # crafted column name cannot inject into the engine's generated SELECT.
+    # ``["*"]`` is the literal "all columns" case (no user input).
+    if plan.field_pairs:
+        columns = [_validate_sql_identifier(s) for s, _ in plan.field_pairs]
+    else:
+        columns = ["*"]
     cfg: dict = {
         "driver": _BENTHOS_SQL_DRIVER[plan.source_db_type],
         "dsn": "${" + SOURCE_ENV + "}",

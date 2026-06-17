@@ -21,6 +21,17 @@ export const authApi = {
     return data
   },
 
+  /** Exchange the httpOnly refresh cookie for a fresh access token. */
+  async refresh(): Promise<Token> {
+    const { data } = await api.post<Token>('/auth/refresh', null)
+    return data
+  },
+
+  /** Revoke the server-side session and clear the refresh cookie. */
+  async logout(): Promise<void> {
+    await api.post('/auth/logout', null)
+  },
+
   async me(): Promise<UserRead> {
     const { data } = await api.get<UserRead>('/auth/me')
     return data

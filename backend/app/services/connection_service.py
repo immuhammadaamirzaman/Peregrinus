@@ -9,6 +9,7 @@ Access policy:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Sequence
 
@@ -33,6 +34,8 @@ from app.schemas.connection import (
 )
 from app.services import schema_discovery
 from app.services.schema_discovery import ResolvedConnection
+
+logger = logging.getLogger(__name__)
 
 
 def _can_read_all(user: User) -> bool:
@@ -184,8 +187,13 @@ async def _run_test(rc: ResolvedConnection) -> ConnectionTestResult:
             server_version=version, latency_ms=latency,
         )
     except ConnectionTestError as exc:
-        # Return a clean 200 result so the UI can display the failure inline.
-        return ConnectionTestResult(ok=False, message=exc.detail)
+        # Log the detailed driver/guard reason server-side only; return a
+        # generic message so the test endpoint can't be used as an SSRF /
+        # port-scan / fingerprinting oracle. No latency on failure either.
+        logger.info("Connection test failed: %s", exc.detail)
+        return ConnectionTestResult(
+            ok=False, message="Could not connect with the supplied details."
+        )
 
 
 async def test_config(data: ConnectionTestRequest) -> ConnectionTestResult:

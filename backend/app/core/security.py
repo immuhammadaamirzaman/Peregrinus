@@ -34,6 +34,39 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(_prepare(password), bcrypt.gensalt()).decode("utf-8")
 
 
+# ── Password policy (enforced for privileged bootstrap accounts) ──
+MIN_PASSWORD_LENGTH = 12
+
+# Well-known / trivially guessable values that must never be accepted for the
+# bootstrap admin (compared case-insensitively after stripping whitespace).
+_WEAK_PASSWORDS = frozenset(
+    {
+        "admin",
+        "admin1234",
+        "administrator",
+        "password",
+        "passw0rd",
+        "change-me",
+        "change-me-admin",
+        "changeme",
+        "letmein",
+        "secret",
+        "datamovers",
+        "12345678",
+        "123456789",
+        "1234567890",
+    }
+)
+
+
+def is_acceptable_password(password: str | None) -> bool:
+    """True if ``password`` meets the minimum bootstrap policy: at least
+    :data:`MIN_PASSWORD_LENGTH` characters and not a well-known weak value."""
+    if not password or len(password) < MIN_PASSWORD_LENGTH:
+        return False
+    return password.strip().lower() not in _WEAK_PASSWORDS
+
+
 def verify_password(password: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(_prepare(password), hashed.encode("utf-8"))
@@ -47,6 +80,7 @@ def _create_token(
     role: str,
     token_type: TokenType,
     expires_delta: timedelta,
+    jti: str | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     payload: dict[str, Any] = {
@@ -55,7 +89,7 @@ def _create_token(
         "type": token_type,
         "iat": now,
         "exp": now + expires_delta,
-        "jti": uuid.uuid4().hex,
+        "jti": jti or uuid.uuid4().hex,
     }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
@@ -67,10 +101,15 @@ def create_access_token(subject: str | uuid.UUID, role: str) -> str:
     )
 
 
-def create_refresh_token(subject: str | uuid.UUID, role: str) -> str:
+def refresh_token_lifetime() -> timedelta:
+    return timedelta(days=settings.refresh_token_expire_days)
+
+
+def create_refresh_token(subject: str | uuid.UUID, role: str, jti: str) -> str:
+    """Mint a refresh token bound to a persisted session ``jti`` (so it can be
+    rotated / revoked server-side)."""
     return _create_token(
-        subject, role, "refresh",
-        timedelta(days=settings.refresh_token_expire_days),
+        subject, role, "refresh", refresh_token_lifetime(), jti=jti
     )
 
 
