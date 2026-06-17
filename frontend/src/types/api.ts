@@ -30,9 +30,9 @@ export type FilterOp =
   | 'nin'
 
 // ── Auth ────────────────────────────────────────────────────────────
+// The refresh token is delivered as an httpOnly cookie, never in the body.
 export interface Token {
   access_token: string
-  refresh_token: string
   token_type: string
 }
 

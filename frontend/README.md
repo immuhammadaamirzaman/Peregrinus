@@ -56,15 +56,32 @@ be approved by an admin under **Users**.
 
 ### Auth & route protection
 
-- Access + refresh tokens are stored in `localStorage` (see the rationale in
-  [`src/lib/tokens.ts`](src/lib/tokens.ts)). The access token is attached as a
-  `Bearer` header on every request — including the SSE stream, which the native
-  `EventSource` API can't authenticate.
-- A single axios interceptor refreshes the token pair once on a `401` and
-  replays the request; if refresh fails it broadcasts a logout.
+- The **access token lives only in memory** (see [`src/lib/tokens.ts`](src/lib/tokens.ts)),
+  never in `localStorage`, so an XSS cannot exfiltrate a persisted credential. It
+  is attached as a `Bearer` header on every request — including the SSE stream,
+  which the native `EventSource` API can't authenticate.
+- The **refresh token is an httpOnly cookie** set by the backend (scoped to the
+  auth path), unreadable by JavaScript. On load the app silently calls
+  `POST /auth/refresh` (cookie-backed) to restore the session; a single axios
+  interceptor rotates it once on a `401` and replays the request; logout calls
+  `POST /auth/logout` to revoke the session server-side.
 - `ProtectedRoute` guards authenticated routes (and admin-only routes via
   `roles`). `RoleGate` / `CanWrite` hide mutating controls from `guest` users —
   the backend enforces RBAC regardless; this is just UX.
+
+### Production hardening
+
+The built SPA should be served with security headers from your web server /
+reverse proxy (Vite does not emit these for the production build). Recommended:
+
+```
+Content-Security-Policy: default-src 'self'; connect-src 'self' <api-origin>; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+```
+
+Serve over HTTPS so the `Secure` refresh cookie is sent.
 
 ### Project layout
 
@@ -79,10 +96,3 @@ src/
   pages/       Login, Register, Dashboard, Connections, Migrations, Admin/Users
   types/       TypeScript mirrors of the backend Pydantic schemas
 ```
-
-## Phase-1 notes (mirrors the backend)
-
-- Full-dump copy only. Target tables/collections must already exist.
-- Engines: PostgreSQL, MySQL, MongoDB, SQLite (SQL Server is reserved).
-- Filters are structured `{column, op, value}` rows (no raw SQL).
-- Mongo → SQL needs explicit column selection per collection.

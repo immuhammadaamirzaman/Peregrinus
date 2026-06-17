@@ -41,24 +41,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus(u ? 'authenticated' : 'unauthenticated')
   }, [])
 
-  // Hydrate the session from a stored token on first load.
+  // Hydrate the session on first load: the access token lives only in memory,
+  // so try a cookie-backed refresh to mint a new one, then fetch the profile.
   useEffect(() => {
     let cancelled = false
-    if (!tokenStore.getAccess()) {
-      setStatus('unauthenticated')
-      return
-    }
-    authApi
-      .me()
-      .then((u) => {
-        if (!cancelled) applyUser(u)
-      })
-      .catch(() => {
+    ;(async () => {
+      try {
+        const token = await authApi.refresh()
+        if (cancelled) return
+        tokenStore.setAccess(token.access_token)
+        const me = await authApi.me()
+        if (!cancelled) applyUser(me)
+      } catch {
         if (!cancelled) {
           tokenStore.clear()
           applyUser(null)
         }
-      })
+      }
+    })()
     return () => {
       cancelled = true
     }
@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const token = await authApi.login(email, password)
-      tokenStore.set(token)
+      tokenStore.setAccess(token.access_token)
       const me = await authApi.me()
       applyUser(me)
       return me
@@ -88,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(() => {
+    // Best-effort server-side revocation; clear local state regardless.
+    void authApi.logout().catch(() => undefined)
     tokenStore.clear()
     applyUser(null)
   }, [applyUser])

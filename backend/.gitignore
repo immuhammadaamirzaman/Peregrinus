@@ -25,6 +25,10 @@ tmp/
 *.sqlite3
 *.db
 
+# SQLite jail + TLS cert dirs for user connections (runtime data, not committed)
+sqlite_data/
+certs/
+
 # OS / editor
 .DS_Store
 Thumbs.db
