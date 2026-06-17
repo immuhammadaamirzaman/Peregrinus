@@ -15,6 +15,7 @@ from contextlib import closing
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core import netguard
 from app.core.exceptions import ConnectionTestError
 from app.models.enums import DBType, SSLMode
 from app.schemas.connection import ColumnInfo
@@ -69,6 +70,7 @@ def _safe_identifier(name: str) -> str:
 def _connect_postgres(rc: ResolvedConnection):
     import psycopg2
 
+    netguard.validate_outbound_host(rc.host)
     sslmode = "disable" if rc.ssl_mode == SSLMode.DISABLE else rc.ssl_mode.value
     kwargs: dict[str, Any] = {
         "host": rc.host,
@@ -80,18 +82,19 @@ def _connect_postgres(rc: ResolvedConnection):
         "sslmode": sslmode,
     }
     if rootcert := rc.extra_params.get("sslrootcert"):
-        kwargs["sslrootcert"] = rootcert
+        kwargs["sslrootcert"] = netguard.safe_cert_path(rootcert)
     return psycopg2.connect(**kwargs)
 
 
 def _connect_mysql(rc: ResolvedConnection):
     import pymysql
 
+    netguard.validate_outbound_host(rc.host)
     ssl_arg: dict[str, Any] | None = None
     if rc.ssl_mode != SSLMode.DISABLE:
         ssl_arg = {}
         if ca := rc.extra_params.get("ssl_ca"):
-            ssl_arg["ca"] = ca
+            ssl_arg["ca"] = netguard.safe_cert_path(ca)
     return pymysql.connect(
         host=rc.host,
         port=rc.effective_port,
@@ -106,16 +109,21 @@ def _connect_mysql(rc: ResolvedConnection):
 
 
 def _connect_sqlite(rc: ResolvedConnection):
-    # ``database`` holds the file path for SQLite.
-    return sqlite3.connect(rc.database, timeout=CONNECT_TIMEOUT_SECONDS)
+    # ``database`` holds the file path for SQLite; confine it to the jail dir
+    # so a user cannot read/create arbitrary files on the server filesystem.
+    return sqlite3.connect(
+        netguard.safe_sqlite_path(rc.database), timeout=CONNECT_TIMEOUT_SECONDS
+    )
 
 
 def _mongo_client(rc: ResolvedConnection):
     from pymongo import MongoClient
 
     if uri := rc.extra_params.get("uri"):
+        netguard.validate_mongo_uri(uri)
         client = MongoClient(uri, serverSelectionTimeoutMS=CONNECT_TIMEOUT_SECONDS * 1000)
     else:
+        netguard.validate_outbound_host(rc.host)
         client = MongoClient(
             host=rc.host,
             port=rc.effective_port,

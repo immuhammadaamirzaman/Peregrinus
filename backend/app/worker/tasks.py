@@ -24,11 +24,12 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.database import SyncSessionLocal
-from app.models.enums import DBType, LogLevel, MigrationStatus, TableStatus
+from app.models.enums import DBType, LogLevel, MigrationStatus, Role, TableStatus, UserStatus
 from app.models.migration import Migration
 from app.models.migration_checkpoint import MigrationCheckpoint
 from app.models.migration_log import MigrationLog
 from app.models.migration_table import MigrationTable
+from app.models.user import User
 from app.services import connection_service, ddl_generator, schema_discovery, yaml_generator
 from app.services.schema_discovery import ResolvedConnection
 from app.services.yaml_generator import SOURCE_ENV, TARGET_ENV, TablePlan, build_dsn
@@ -100,6 +101,22 @@ def _upsert_checkpoint(db, migration_id: uuid.UUID, table_name: str, rows: int) 
     cp.last_offset = rows
     cp.rows_processed = rows
     db.commit()
+
+
+def _authorize_execution(db, migration: Migration) -> None:
+    """Re-authorize at execution time (defence in depth, independent of the
+    create/start API): the job's owner must still be an APPROVED user and —
+    unless an admin — must still own both referenced connections, otherwise we
+    refuse to decrypt their credentials and dial out."""
+    owner = db.get(User, migration.owner_id)
+    if owner is None or owner.status != UserStatus.APPROVED:
+        raise RuntimeError("Migration owner is no longer an approved user.")
+    if owner.role != Role.ADMIN:
+        for conn in (migration.source_connection, migration.target_connection):
+            if conn is None or conn.owner_id != owner.id:
+                raise RuntimeError(
+                    "Migration owner is not permitted to use one of its connections."
+                )
 
 
 def _resolve_binary() -> Path:
@@ -358,6 +375,7 @@ def run_migration(self, migration_id_str: str) -> str:
         db.commit()
 
         try:
+            _authorize_execution(db, migration)
             binary = _resolve_binary()
             source_rc = connection_service.resolve_connection(migration.source_connection)
             target_rc = connection_service.resolve_connection(migration.target_connection)
@@ -369,9 +387,14 @@ def run_migration(self, migration_id_str: str) -> str:
             _log(db, migration_id, LogLevel.ERROR, str(exc))
             return "failed (setup)"
 
-        env = os.environ.copy()
-        env[SOURCE_ENV] = build_dsn(source_rc)
-        env[TARGET_ENV] = build_dsn(target_rc)
+        # Hand the engine a MINIMAL environment — only the two DSNs plus the
+        # OS essentials a subprocess needs — instead of os.environ.copy(), so
+        # application secrets (ENCRYPTION_KEY, JWT_SECRET_KEY, POSTGRES_PASSWORD,
+        # …) are never exposed to the Redpanda Connect process.
+        env: dict[str, str] = {SOURCE_ENV: build_dsn(source_rc), TARGET_ENV: build_dsn(target_rc)}
+        for key in ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "LANG", "TZ"):
+            if (val := os.environ.get(key)) is not None:
+                env[key] = val
 
         create_tables = bool(migration.options.get("create_tables", False))
 

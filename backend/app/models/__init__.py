@@ -10,6 +10,7 @@ from app.models.migration import Migration
 from app.models.migration_checkpoint import MigrationCheckpoint
 from app.models.migration_log import MigrationLog
 from app.models.migration_table import MigrationTable
+from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "MigrationTable",
     "MigrationLog",
     "MigrationCheckpoint",
+    "RefreshToken",
 ]
