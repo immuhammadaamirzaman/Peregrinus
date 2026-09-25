@@ -27,6 +27,8 @@ export function emitLogout(): void {
 export const api = axios.create({
   baseURL: '/api/v1',
   headers: { 'Content-Type': 'application/json' },
+  // Send the httpOnly refresh-token cookie on auth requests (refresh/logout).
+  withCredentials: true,
 })
 
 // ── Request: attach Bearer token ────────────────────────────────────
@@ -44,14 +46,16 @@ type RetriableConfig = AxiosRequestConfig & { _retry?: boolean }
 let refreshing: Promise<string | null> | null = null
 
 async function runRefresh(): Promise<string | null> {
-  const refresh_token = tokenStore.getRefresh()
-  if (!refresh_token) return null
   try {
     // Bare axios (not `api`) so we skip the interceptors and avoid recursion.
-    const { data } = await axios.post<Token>('/api/v1/auth/refresh', {
-      refresh_token,
-    })
-    tokenStore.set(data)
+    // No body: the refresh token rides along in the httpOnly cookie, which
+    // requires withCredentials.
+    const { data } = await axios.post<Token>(
+      '/api/v1/auth/refresh',
+      null,
+      { withCredentials: true },
+    )
+    tokenStore.setAccess(data.access_token)
     return data.access_token
   } catch {
     return null
@@ -66,7 +70,9 @@ api.interceptors.response.use(
     const url = original?.url ?? ''
 
     const isAuthEndpoint =
-      url.includes('/auth/login') || url.includes('/auth/refresh')
+      url.includes('/auth/login') ||
+      url.includes('/auth/refresh') ||
+      url.includes('/auth/logout')
 
     if (status === 401 && original && !original._retry && !isAuthEndpoint) {
       original._retry = true

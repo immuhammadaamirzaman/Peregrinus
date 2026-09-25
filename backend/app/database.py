@@ -25,10 +25,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 
+# Echo SQL (and bound params) only when explicitly debugging AND never in
+# production — bound params include bcrypt hashes / PII we must not log.
+_ECHO_SQL = settings.debug and not settings.is_production
+
 # ── Async (FastAPI) ──────────────────────────────────────────────
 async_engine: AsyncEngine = create_async_engine(
     settings.async_database_url,
-    echo=settings.debug,
+    echo=_ECHO_SQL,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
@@ -44,7 +48,7 @@ AsyncSessionLocal = async_sessionmaker(
 # ── Sync (Celery / Alembic / schema discovery) ──────────────────
 sync_engine = create_engine(
     settings.sync_database_url,
-    echo=settings.debug,
+    echo=_ECHO_SQL,
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,

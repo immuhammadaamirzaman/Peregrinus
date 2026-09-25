@@ -30,6 +30,27 @@ _MONGO = {
 
 VALID_OPS = set(_SQL_CMP) | set(_SQL_LIST)
 
+# Cap on a Mongo "like" pattern length (defence against pathological inputs).
+MAX_LIKE_LENGTH = 200
+
+
+def _like_to_safe_regex(value: Any) -> str:
+    """Translate a SQL-style LIKE value into a *safe*, anchored Mongo regex.
+
+    The whole value is regex-escaped first (so no user metacharacter — and thus
+    no catastrophic-backtracking construct like ``(a+)+`` — survives), then the
+    SQL wildcards ``%`` → ``.*`` and ``_`` → ``.`` are applied and the pattern
+    is anchored. This removes the ReDoS / regex-injection surface of passing a
+    raw user string as ``$regex``.
+    """
+    if not isinstance(value, str):
+        raise ValueError("The 'like' operator requires a string value.")
+    if len(value) > MAX_LIKE_LENGTH:
+        raise ValueError(f"'like' value exceeds {MAX_LIKE_LENGTH} characters.")
+    escaped = re.escape(value)
+    pattern = escaped.replace("%", ".*").replace("_", ".")
+    return f"^{pattern}$"
+
 
 def _column(raw: str) -> str:
     if not SAFE_IDENT.match(raw):
@@ -95,6 +116,10 @@ def render_mongo(conditions: list[dict] | None) -> dict[str, Any]:
             raise ValueError(f"Unsupported filter operator: {op!r}")
         column = _column(cond["column"])
         value = cond.get("value")
-        expr = {"$regex": value} if op == "like" else {_MONGO[op]: value}
+        expr = (
+            {"$regex": _like_to_safe_regex(value)}
+            if op == "like"
+            else {_MONGO[op]: value}
+        )
         query.setdefault(column, {}).update(expr)
     return query

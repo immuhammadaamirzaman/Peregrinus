@@ -62,6 +62,39 @@ class MigrationTableSpec(BaseModel):
     # Optional structured source filter (AND-combined, parameterized).
     filters: list[FilterCondition] | None = None
 
+    @field_validator("source_table", "target_table")
+    @classmethod
+    def _safe_table(cls, v: str | None) -> str | None:
+        from app.services.filters import SAFE_IDENT
+
+        if v is not None and not SAFE_IDENT.match(v):
+            raise ValueError("table name must be a valid identifier (letters, digits, _ . $)")
+        return v
+
+    @field_validator("selected_columns")
+    @classmethod
+    def _safe_selected_columns(cls, v: list[str] | None) -> list[str] | None:
+        from app.services.filters import SAFE_IDENT
+
+        for col in v or []:
+            if not SAFE_IDENT.match(col):
+                raise ValueError(
+                    f"selected_columns entry is not a valid identifier: {col!r}"
+                )
+        return v
+
+    @field_validator("column_mapping")
+    @classmethod
+    def _safe_column_mapping(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        from app.services.filters import SAFE_IDENT
+
+        for src, tgt in (v or {}).items():
+            if not SAFE_IDENT.match(src) or not SAFE_IDENT.match(tgt):
+                raise ValueError(
+                    "column_mapping keys and values must be valid identifiers"
+                )
+        return v
+
 
 class MigrationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=160)

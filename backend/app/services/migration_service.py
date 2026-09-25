@@ -93,9 +93,11 @@ async def get_writable(db: AsyncSession, migration_id: uuid.UUID, user: User) ->
 async def create_migration(
     db: AsyncSession, data: MigrationCreate, owner: User
 ) -> Migration:
-    # Validates existence + read access for both connections.
-    source = await connection_service.get_readable(db, data.source_connection_id, owner)
-    target = await connection_service.get_readable(db, data.target_connection_id, owner)
+    # Use get_for_use (owner-or-admin), not get_readable: a migration will later
+    # decrypt these connections' credentials and dial out, so referencing one is
+    # a *credentialed* operation that a mere reader (e.g. guest) must not perform.
+    source = await connection_service.get_for_use(db, data.source_connection_id, owner)
+    target = await connection_service.get_for_use(db, data.target_connection_id, owner)
 
     # Mongo→SQL requires explicit columns: inferring them from a 100-doc sample
     # would silently drop fields absent from the sample (heterogeneous docs).

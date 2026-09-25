@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────────
     app_name: str = "DataMovers"
     environment: str = "development"
-    debug: bool = True
+    # Default OFF: ``debug`` enables verbose SQLAlchemy SQL echo (which would
+    # log bound params — bcrypt hashes, emails, etc.). Opt in explicitly in dev.
+    debug: bool = False
     api_v1_prefix: str = "/api/v1"
 
     # ── Metadata database (our own Postgres) ─────────────────────
@@ -50,12 +52,42 @@ class Settings(BaseSettings):
     # ── Redpanda Connect ─────────────────────────────────────────
     redpanda_connect_bin: str = "bin/rpk-connect.exe"
 
+    # ── Outbound connection / file-access guardrails (SSRF) ──────
+    # User-supplied DB hosts that resolve to private/loopback ranges are
+    # refused unless this is True. Link-local (cloud metadata 169.254.x),
+    # multicast, reserved and unspecified addresses are ALWAYS refused.
+    # Defaults to allowing private hosts only outside production, so local-DB
+    # development keeps working while production fails closed.
+    db_allow_private_hosts: bool | None = None
+    # SQLite database files are confined to this directory (relative paths
+    # resolved against it; absolute paths / traversal rejected).
+    sqlite_base_dir: str = "sqlite_data"
+    # Directory that user-referenced TLS cert files (sslrootcert / ssl_ca)
+    # must live under.
+    ssl_cert_dir: str = "certs"
+
     # ── First admin bootstrap ────────────────────────────────────
+    # No usable default password: bootstrap is fail-closed and refuses to seed
+    # an admin unless a strong FIRST_ADMIN_PASSWORD is explicitly provided
+    # (see app.services.auth_service.bootstrap_first_admin).
     first_admin_email: str = "admin@datamovers.dev"
-    first_admin_password: str = "admin1234"
+    first_admin_password: str = ""
 
     # ── CORS (stored as comma-separated string in env) ───────────
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    # ── Request limits / DoS ─────────────────────────────────────
+    # Reject request bodies larger than this (bytes). Migration specs are small.
+    max_request_bytes: int = 1_000_000
+    # Cap on concurrent open SSE log streams (per process).
+    max_sse_connections: int = 100
+
+    # ── Rate limiting ────────────────────────────────────────────
+    # Storage for the auth rate limiter. "memory://" is per-process (fine for a
+    # single worker / dev); point at Redis (e.g. redis://localhost:6379/2) for a
+    # shared limit across multiple API workers.
+    rate_limit_storage_uri: str = "memory://"
+    rate_limit_auth: str = "5/minute"
 
     # ── Computed URLs / helpers ──────────────────────────────────
     @computed_field  # type: ignore[prop-decorator]
@@ -83,6 +115,14 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @property
+    def effective_allow_private_hosts(self) -> bool:
+        """Whether user DB hosts may resolve to private/loopback ranges.
+        Explicit setting wins; otherwise allowed only outside production."""
+        if self.db_allow_private_hosts is not None:
+            return self.db_allow_private_hosts
+        return not self.is_production
 
 
 @lru_cache

@@ -110,7 +110,7 @@ The dev server proxies `/api` and `/health` to the backend on `http://localhost:
 
 ## First login
 
-On first startup, the backend seeds an admin user from `FIRST_ADMIN_EMAIL` and `FIRST_ADMIN_PASSWORD` in `.env`. Use those credentials to log in. **Change the password immediately after.**
+On first startup, the backend seeds an admin user from `FIRST_ADMIN_EMAIL` and `FIRST_ADMIN_PASSWORD` in `.env`. `FIRST_ADMIN_PASSWORD` is **required** and must be strong (≥ 12 chars, not a well-known value) — if it's unset or weak the bootstrap is **skipped** (fail-closed) and logs an error rather than seeding a guessable admin. Use those credentials to log in, then change the password.
 
 New sign-ups via the UI are created as `pending` and require admin approval under the **Users** page before they can log in.
 
@@ -119,9 +119,11 @@ New sign-ups via the UI are created as `pending` and require admin approval unde
 ## Security notes
 
 - DB credentials are **Fernet-encrypted** in PostgreSQL — the raw password is never stored or returned
-- Generated Redpanda Connect configs reference env-var placeholders (`${DM_SOURCE_DSN}`); real DSNs are injected as subprocess environment variables at runtime and the temp config file is deleted immediately after each migration run
-- Row filters use **bound parameters** — no raw SQL or NoSQL injection surface
-- JWT access tokens expire after 15 minutes; refresh tokens after 7 days
+- Generated Redpanda Connect configs reference env-var placeholders (`${DM_SOURCE_DSN}`); real DSNs are injected into a **minimal** subprocess environment (only the two DSNs, never the app's own secrets) and the temp config file is deleted immediately after each run
+- Row filters use **bound parameters**, and all table/column identifiers are allowlist-validated — no raw SQL or NoSQL injection surface
+- **Egress guard:** user-supplied DB hosts are resolved and rejected if they hit cloud-metadata / link-local / (in production) private/loopback ranges; SQLite file paths are confined to a jail directory — mitigating SSRF and arbitrary-file access
+- **Auth:** short-lived access token (15 min) held in memory by the SPA; the 7-day refresh token is an **httpOnly cookie** with server-side **rotation + reuse detection** and a `/auth/logout` revocation endpoint; auth endpoints are **rate-limited**
+- Security response headers (CSP/HSTS/`nosniff`/`X-Frame-Options`) are set on API responses; interactive API docs are disabled in production
 
 ---
 
