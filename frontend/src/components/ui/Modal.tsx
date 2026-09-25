@@ -11,7 +11,7 @@ interface ModalProps {
   description?: ReactNode
   children: ReactNode
   footer?: ReactNode
-  /** Tailwind max-width class for the panel. */
+  /** Panel max-width. */
   size?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
@@ -50,8 +50,11 @@ export function Modal({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-6">
+      {/* Scrim colour is a theme token (8-digit hex carries the alpha), so it
+          deepens appropriately on dark themes instead of staying a fixed
+          rgba(15,23,42,.4) that barely registered against a dark canvas. */}
       <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+        className="animate-fade fixed inset-0 bg-overlay backdrop-blur-sm"
         onClick={onClose}
         aria-hidden
       />
@@ -59,34 +62,32 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-10 my-8 w-full rounded-xl bg-white shadow-xl ring-1 ring-slate-200',
+          'animate-pop relative z-10 my-8 w-full rounded-xl border border-line bg-surface-raised shadow-overlay',
           SIZES[size],
         )}
       >
         {(title || description) && (
-          <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
+          <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
             <div className="min-w-0">
               {title && (
-                <h2 className="text-base font-semibold text-slate-900">
-                  {title}
-                </h2>
+                <h2 className="text-base font-semibold text-ink">{title}</h2>
               )}
               {description && (
-                <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+                <p className="mt-0.5 text-sm text-muted">{description}</p>
               )}
             </div>
             <button
               onClick={onClose}
-              className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="dm-btn dm-btn-ghost -m-1 rounded-md p-1"
               aria-label="Close"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
         )}
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-6 py-5 text-ink">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+          <div className="flex flex-wrap justify-end gap-3 border-t border-line px-6 py-4">
             {footer}
           </div>
         )}

@@ -1,8 +1,19 @@
-import type { HTMLAttributes, ReactNode, ThHTMLAttributes } from 'react'
+import type {
+  HTMLAttributes,
+  ReactNode,
+  TdHTMLAttributes,
+  ThHTMLAttributes,
+} from 'react'
 
 import { cn } from '@/lib/cn'
 
-export function Table({ children, className }: { children: ReactNode; className?: string }) {
+export function Table({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
   return (
     <div className="overflow-x-auto">
       <table className={cn('w-full border-collapse text-sm', className)}>
@@ -13,7 +24,9 @@ export function Table({ children, className }: { children: ReactNode; className?
 }
 
 export function Thead({ children }: { children: ReactNode }) {
-  return <thead className="border-b border-slate-200 bg-slate-50/60">{children}</thead>
+  return (
+    <thead className="border-b border-line bg-surface-hover">{children}</thead>
+  )
 }
 
 export function Th({
@@ -24,7 +37,7 @@ export function Th({
   return (
     <th
       className={cn(
-        'px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500',
+        'px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted',
         className,
       )}
       {...props}
@@ -35,7 +48,7 @@ export function Th({
 }
 
 export function Tbody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-slate-100">{children}</tbody>
+  return <tbody className="divide-y divide-line">{children}</tbody>
 }
 
 export function Tr({
@@ -44,7 +57,7 @@ export function Tr({
   ...props
 }: HTMLAttributes<HTMLTableRowElement> & { children: ReactNode }) {
   return (
-    <tr className={cn('hover:bg-slate-50/70', className)} {...props}>
+    <tr className={cn('dm-row text-ink', className)} {...props}>
       {children}
     </tr>
   )
@@ -54,9 +67,9 @@ export function Td({
   children,
   className,
   ...props
-}: HTMLAttributes<HTMLTableCellElement> & { children?: ReactNode }) {
+}: TdHTMLAttributes<HTMLTableCellElement> & { children?: ReactNode }) {
   return (
-    <td className={cn('px-4 py-3 text-slate-700 align-middle', className)} {...props}>
+    <td className={cn('px-4 py-3 align-middle text-ink', className)} {...props}>
       {children}
     </td>
   )

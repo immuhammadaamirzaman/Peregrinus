@@ -20,17 +20,25 @@ export function Stepper({
               <span
                 className={cn(
                   'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ring-1 ring-inset',
-                  done && 'bg-brand-600 text-white ring-brand-600',
+                  // `duration-(--motion-base)` ties the transition to the active
+                  // motion tier, so "off" makes step changes instant.
+                  'transition-colors duration-(--motion-base)',
+                  done && 'bg-brand-600 text-brand-fg ring-brand-600',
                   active && 'bg-brand-50 text-brand-700 ring-brand-300',
-                  !done && !active && 'bg-white text-slate-400 ring-slate-200',
+                  !done && !active && 'bg-surface text-faint ring-line',
                 )}
+                aria-current={active ? 'step' : undefined}
               >
-                {done ? <Check className="h-4 w-4" /> : i + 1}
+                {done ? (
+                  <Check className="animate-pop h-4 w-4" />
+                ) : (
+                  i + 1
+                )}
               </span>
               <span
                 className={cn(
-                  'hidden text-sm font-medium sm:block',
-                  active ? 'text-slate-900' : 'text-slate-500',
+                  'hidden text-sm font-medium transition-colors duration-(--motion-base) sm:block',
+                  active ? 'text-ink' : 'text-muted',
                 )}
               >
                 {label}
@@ -39,8 +47,8 @@ export function Stepper({
             {i < steps.length - 1 && (
               <span
                 className={cn(
-                  'mx-3 h-px flex-1',
-                  done ? 'bg-brand-300' : 'bg-slate-200',
+                  'mx-3 h-px flex-1 transition-colors duration-(--motion-base)',
+                  done ? 'bg-brand-300' : 'bg-line',
                 )}
               />
             )}

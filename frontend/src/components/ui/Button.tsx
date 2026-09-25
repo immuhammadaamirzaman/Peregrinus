@@ -1,9 +1,17 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import { Loader2 } from 'lucide-react'
 
+import { MOTION_KEEP } from '@/constants/motion'
 import { cn } from '@/lib/cn'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline'
+type Variant =
+  | 'primary'
+  | 'secondary'
+  | 'ghost'
+  | 'danger'
+  | 'outline'
+  /** Ghost button that reads as destructive — row-level delete actions. */
+  | 'ghostDanger'
 type Size = 'sm' | 'md' | 'lg' | 'icon'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -12,16 +20,28 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean
 }
 
+/**
+ * Each variant is a single `.dm-btn-*` class defined in index.css, which owns
+ * both the resting colours and the hover/active treatment (derived from theme
+ * tokens with `color-mix`, and lifting by the active motion tier's amount).
+ *
+ * Resting colours are deliberately *not* `bg-*` utilities here. Tailwind's
+ * utilities layer outranks the components layer, so a `bg-brand-600` class
+ * would beat `.dm-btn-primary:hover` and the hover state would never paint.
+ * Keeping both in one layer fixes the ordering while still letting a caller
+ * override via `className` — a utility passed in wins over either.
+ *
+ * This also replaces the old inline `style` objects (which a caller's className
+ * could never override) and the `filter: brightness()` hover, which promoted
+ * every button to its own compositor layer on pointer-over.
+ */
 const VARIANTS: Record<Variant, string> = {
-  primary:
-    'bg-brand-600 text-white hover:bg-brand-700 focus-visible:ring-brand-500 shadow-sm',
-  secondary:
-    'bg-slate-100 text-slate-800 hover:bg-slate-200 focus-visible:ring-slate-400',
-  outline:
-    'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus-visible:ring-slate-400',
-  ghost: 'text-slate-600 hover:bg-slate-100 focus-visible:ring-slate-400',
-  danger:
-    'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500 shadow-sm',
+  primary: 'dm-btn-primary',
+  secondary: 'dm-btn-secondary',
+  outline: 'dm-btn-outline',
+  ghost: 'dm-btn-ghost',
+  danger: 'dm-btn-danger',
+  ghostDanger: 'dm-btn-ghost-danger',
 }
 
 const SIZES: Record<Size, string> = {
@@ -33,15 +53,23 @@ const SIZES: Record<Size, string> = {
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { className, variant = 'primary', size = 'md', loading, disabled, children, ...props },
+    {
+      className,
+      variant = 'primary',
+      size = 'md',
+      loading,
+      disabled,
+      children,
+      ...props
+    },
     ref,
   ) => (
     <button
       ref={ref}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex items-center justify-center rounded-lg font-medium transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+        'dm-btn inline-flex items-center justify-center rounded-lg font-medium',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 focus-visible:ring-offset-surface',
         'disabled:pointer-events-none disabled:opacity-50',
         VARIANTS[variant],
         SIZES[size],
@@ -49,7 +77,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       )}
       {...props}
     >
-      {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+      {/* Exempt from the motion kill switch: a spinner that doesn't spin reads
+          as a frozen UI rather than a considerate one. */}
+      {loading && <Loader2 className={cn('h-4 w-4 animate-spin', MOTION_KEEP)} />}
       {children}
     </button>
   ),

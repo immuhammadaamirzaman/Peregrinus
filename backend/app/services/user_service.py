@@ -53,3 +53,13 @@ async def delete_user(
         raise InvalidStateError("You cannot delete your own account.")
     user = await get_user_or_404(db, user_id)
     await db.delete(user)
+
+
+async def update_preferences(
+    db: AsyncSession, user: User, preferences: dict
+) -> User:
+    """Merge the given preferences dict into the user's current preferences."""
+    current = dict(user.preferences or {})
+    current.update(preferences)
+    user.preferences = current
+    return user

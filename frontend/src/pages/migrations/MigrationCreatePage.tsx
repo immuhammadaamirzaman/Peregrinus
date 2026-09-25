@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  AlertCircle,
   ArrowLeft,
   ArrowRight,
   ChevronDown,
@@ -23,20 +22,18 @@ import { getApiErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { LIST_OPS, toFilterCondition } from '@/lib/filters'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
+import { Reveal } from '@/components/ui/Motion'
 import { Select } from '@/components/ui/Select'
 import { Spinner } from '@/components/ui/Spinner'
 import { Stepper } from '@/components/ui/Stepper'
 import { Textarea } from '@/components/ui/Textarea'
-import type {
-  FilterOp,
-  MigrationCreate,
-  MigrationTableSpec,
-} from '@/types/api'
+import type { FilterOp, MigrationCreate, MigrationTableSpec } from '@/types/api'
 
 const STEPS = ['Details', 'Tables', 'Options & review']
 
@@ -120,12 +117,10 @@ export function MigrationCreatePage() {
       return null
     }
     if (step === 1) {
-      if (includedTables.length === 0)
-        return 'Select at least one table to copy.'
+      if (includedTables.length === 0) return 'Select at least one table to copy.'
       for (const t of includedTables) {
         const c = configs[t]
-        if (!c.target_table.trim())
-          return `Set a target table for "${t}".`
+        if (!c.target_table.trim()) return `Set a target table for "${t}".`
         if (!c.allColumns && c.selected_columns.length === 0)
           return `Select at least one column for "${t}" (or choose all columns).`
       }
@@ -186,9 +181,7 @@ export function MigrationCreatePage() {
           await startMutation.mutateAsync(created.id)
           toast.success('Migration created and started.')
         } catch (err) {
-          toast.error(
-            `Created, but could not start: ${getApiErrorMessage(err)}`,
-          )
+          toast.error(`Created, but could not start: ${getApiErrorMessage(err)}`)
         }
       } else {
         toast.success('Migration created as draft.')
@@ -222,133 +215,139 @@ export function MigrationCreatePage() {
       </Card>
 
       {error && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{error}</span>
-        </div>
+        <Alert tone="error" className="mb-4">
+          {error}
+        </Alert>
       )}
 
       {/* ── Step 1: Details ─────────────────────────────────────────── */}
       {step === 0 && (
-        <Card>
-          <CardHeader title="Migration details" description="Name the job and choose endpoints." />
-          <CardBody className="space-y-5">
-            <Field label="Name" htmlFor="name" required>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Prod → Staging nightly copy"
-              />
-            </Field>
+        // Keyed on step so moving between steps replays the entrance animation.
+        <Reveal key="step-0">
+          <Card>
+            <CardHeader
+              title="Migration details"
+              description="Name the job and choose endpoints."
+            />
+            <CardBody className="space-y-5">
+              <Field label="Name" htmlFor="name" required>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Prod → Staging nightly copy"
+                />
+              </Field>
 
-            <Field label="Description" htmlFor="description">
-              <Textarea
-                id="description"
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional notes about this migration."
-              />
-            </Field>
+              <Field label="Description" htmlFor="description">
+                <Textarea
+                  id="description"
+                  rows={2}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Optional notes about this migration."
+                />
+              </Field>
 
-            {writableConnections.length < 1 ? (
-              <div className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-amber-200">
-                You need at least one connection.{' '}
-                <Link to="/connections" className="font-medium underline">
-                  Create a connection
-                </Link>{' '}
-                first.
+              {writableConnections.length < 1 ? (
+                <Alert tone="warning">
+                  You need at least one connection.{' '}
+                  <Link to="/connections" className="font-medium underline">
+                    Create a connection
+                  </Link>{' '}
+                  first.
+                </Alert>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label="Source connection" htmlFor="source" required>
+                    <Select
+                      id="source"
+                      value={sourceId}
+                      onChange={(e) => setSourceId(e.target.value)}
+                    >
+                      <option value="">Select source…</option>
+                      {writableConnections.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({DB_TYPE_LABELS[c.db_type]})
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Target connection" htmlFor="target" required>
+                    <Select
+                      id="target"
+                      value={targetId}
+                      onChange={(e) => setTargetId(e.target.value)}
+                    >
+                      <option value="">Select target…</option>
+                      {writableConnections.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({DB_TYPE_LABELS[c.db_type]})
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              )}
+
+              <div className="rounded-lg bg-surface-hover px-3 py-2.5 text-xs text-muted">
+                Target tables/collections must already exist unless you enable
+                “Create target tables” on the next step — the engine inserts rows,
+                it does not create the target schema for you.
               </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Source connection" htmlFor="source" required>
-                  <Select
-                    id="source"
-                    value={sourceId}
-                    onChange={(e) => setSourceId(e.target.value)}
-                  >
-                    <option value="">Select source…</option>
-                    {writableConnections.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({DB_TYPE_LABELS[c.db_type]})
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label="Target connection" htmlFor="target" required>
-                  <Select
-                    id="target"
-                    value={targetId}
-                    onChange={(e) => setTargetId(e.target.value)}
-                  >
-                    <option value="">Select target…</option>
-                    {writableConnections.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({DB_TYPE_LABELS[c.db_type]})
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-            )}
-
-            <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
-              Target tables/collections must already exist — the engine inserts
-              rows, it does not create the target schema.
-            </div>
-          </CardBody>
-        </Card>
+            </CardBody>
+          </Card>
+        </Reveal>
       )}
 
       {/* ── Step 2: Tables ──────────────────────────────────────────── */}
       {step === 1 && (
-        <Card>
-          <CardHeader
-            title="Select tables"
-            description={
-              sourceConn
-                ? `Tables discovered on "${sourceConn.name}".`
-                : 'Choose a source connection first.'
-            }
-            action={
-              <Badge tone="info">{includedTables.length} selected</Badge>
-            }
-          />
-          <CardBody>
-            {tablesQuery.isLoading ? (
-              <div className="flex items-center gap-2 py-8 text-sm text-slate-500">
-                <Spinner /> Discovering tables…
-              </div>
-            ) : tablesQuery.isError ? (
-              <div className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200">
-                Could not list tables: {getApiErrorMessage(tablesQuery.error)}
-              </div>
-            ) : !tablesQuery.data || tablesQuery.data.tables.length === 0 ? (
-              <p className="py-6 text-sm text-slate-500">
-                No tables found on this connection.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {tablesQuery.data.tables.map((table) => (
-                  <TableConfigRow
-                    key={table}
-                    sourceId={sourceId}
-                    table={table}
-                    config={configs[table]}
-                    onToggle={() => toggleTable(table)}
-                    onChange={(patch) => updateConfig(table, patch)}
-                  />
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
+        <Reveal key="step-1">
+          <Card>
+            <CardHeader
+              title="Select tables"
+              description={
+                sourceConn
+                  ? `Tables discovered on "${sourceConn.name}".`
+                  : 'Choose a source connection first.'
+              }
+              action={<Badge tone="info">{includedTables.length} selected</Badge>}
+            />
+            <CardBody>
+              {tablesQuery.isLoading ? (
+                <div className="flex items-center gap-2 py-8 text-sm text-muted">
+                  <Spinner /> Discovering tables…
+                </div>
+              ) : tablesQuery.isError ? (
+                <Alert tone="error">
+                  Could not list tables: {getApiErrorMessage(tablesQuery.error)}
+                </Alert>
+              ) : !tablesQuery.data || tablesQuery.data.tables.length === 0 ? (
+                <p className="py-6 text-sm text-muted">
+                  No tables found on this connection.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {tablesQuery.data.tables.map((table) => (
+                    <TableConfigRow
+                      key={table}
+                      sourceId={sourceId}
+                      table={table}
+                      config={configs[table]}
+                      onToggle={() => toggleTable(table)}
+                      onChange={(patch) => updateConfig(table, patch)}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        </Reveal>
       )}
 
       {/* ── Step 3: Options & review ────────────────────────────────── */}
       {step === 2 && (
-        <div className="space-y-5">
+        <Reveal key="step-2" className="space-y-5">
           <Card>
             <CardHeader title="Options" description="Tune how the copy runs." />
             <CardBody className="space-y-5">
@@ -399,34 +398,31 @@ export function MigrationCreatePage() {
                 </Field>
               </div>
 
-              <div className="border-t border-slate-100 pt-4">
+              <div className="border-t border-line pt-4">
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
                     type="checkbox"
                     checked={createTables}
                     onChange={(e) => setCreateTables(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    className="mt-0.5 h-4 w-4 rounded border-border-subtle"
                   />
                   <span>
-                    <span className="block text-sm font-medium text-slate-800">
+                    <span className="block text-sm font-medium text-ink">
                       Create target tables automatically
                     </span>
-                    <span className="mt-0.5 block text-xs text-slate-500">
+                    <span className="mt-0.5 block text-xs text-muted">
                       If a target table doesn&apos;t exist, create it from the
-                      source schema before copying. Leave unchecked if the
-                      target database already has tables.
+                      source schema before copying. Leave unchecked if the target
+                      database already has tables.
                     </span>
                   </span>
                 </label>
 
                 {targetHasNoTables && (
-                  <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-amber-200">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>
-                      The target database has no tables. Enable “Create target
-                      tables” or create them manually before running.
-                    </span>
-                  </div>
+                  <Alert tone="warning" className="mt-3">
+                    The target database has no tables. Enable “Create target
+                    tables” or create them manually before running.
+                  </Alert>
                 )}
               </div>
             </CardBody>
@@ -440,38 +436,39 @@ export function MigrationCreatePage() {
                 <ReviewItem
                   label="Route"
                   value={
-                    <span className="flex items-center gap-1.5">
-                      <Database className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <Database className="h-3.5 w-3.5 shrink-0 text-faint" />
                       {sourceConn?.name}
-                      <ArrowRight className="h-3 w-3 text-slate-400" />
+                      <ArrowRight className="h-3 w-3 shrink-0 text-faint" />
                       {targetConn?.name}
                     </span>
                   }
                 />
               </div>
               <div>
-                <p className="mb-1.5 font-medium text-slate-700">
+                <p className="mb-1.5 font-medium text-ink">
                   Tables ({includedTables.length})
                 </p>
                 <ul className="space-y-1">
                   {includedTables.map((t) => {
                     const c = configs[t]
+                    const filterCount = c.filters.filter((f) =>
+                      f.column.trim(),
+                    ).length
                     return (
                       <li
                         key={t}
-                        className="flex items-center gap-2 rounded-md bg-slate-50 px-3 py-1.5 text-xs"
+                        className="flex flex-wrap items-center gap-2 rounded-md bg-surface-hover px-3 py-1.5 text-xs text-ink"
                       >
-                        <Table2 className="h-3.5 w-3.5 text-slate-400" />
+                        <Table2 className="h-3.5 w-3.5 shrink-0 text-faint" />
                         <span className="font-mono">{t}</span>
-                        <ArrowRight className="h-3 w-3 text-slate-400" />
+                        <ArrowRight className="h-3 w-3 shrink-0 text-faint" />
                         <span className="font-mono">{c.target_table || t}</span>
-                        <span className="ml-auto text-slate-400">
+                        <span className="ml-auto text-faint">
                           {c.allColumns
                             ? 'all columns'
                             : `${c.selected_columns.length} cols`}
-                          {c.filters.filter((f) => f.column.trim()).length
-                            ? ` · ${c.filters.filter((f) => f.column.trim()).length} filter(s)`
-                            : ''}
+                          {filterCount ? ` · ${filterCount} filter(s)` : ''}
                         </span>
                       </li>
                     )
@@ -480,11 +477,11 @@ export function MigrationCreatePage() {
               </div>
             </CardBody>
           </Card>
-        </div>
+        </Reveal>
       )}
 
       {/* ── Footer nav ──────────────────────────────────────────────── */}
-      <div className="mt-6 flex items-center justify-between">
+      <div className="mt-6 flex items-center justify-between gap-3">
         <Button variant="outline" onClick={back} disabled={step === 0 || busy}>
           <ArrowLeft className="h-4 w-4" />
           Back
@@ -495,12 +492,8 @@ export function MigrationCreatePage() {
             <ArrowRight className="h-4 w-4" />
           </Button>
         ) : (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => submit(false)}
-              loading={busy}
-            >
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => submit(false)} loading={busy}>
               Save as draft
             </Button>
             <Button onClick={() => submit(true)} loading={busy}>
@@ -513,17 +506,11 @@ export function MigrationCreatePage() {
   )
 }
 
-function ReviewItem({
-  label,
-  value,
-}: {
-  label: string
-  value: ReactNode
-}) {
+function ReviewItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
-      <div className="mt-0.5 font-medium text-slate-800">{value}</div>
+      <p className="text-xs uppercase tracking-wide text-faint">{label}</p>
+      <div className="mt-0.5 font-medium text-ink">{value}</div>
     </div>
   )
 }
@@ -544,7 +531,9 @@ function TableConfigRow({
 }) {
   const [expanded, setExpanded] = useState(false)
   const included = !!config
-  const wantColumns = included && !config!.allColumns
+  // Narrow off `config` directly rather than through the `included` alias, so
+  // the checks below don't depend on aliased-condition inference.
+  const wantColumns = !!config && !config.allColumns
   const columnsQuery = useConnectionColumns(
     sourceId,
     table,
@@ -581,8 +570,8 @@ function TableConfigRow({
   return (
     <div
       className={cn(
-        'rounded-lg border transition-colors',
-        included ? 'border-brand-200 bg-brand-50/30' : 'border-slate-200',
+        'rounded-lg border transition-colors duration-(--motion-fast)',
+        included ? 'border-brand-200 bg-brand-50/40' : 'border-line bg-surface',
       )}
     >
       <div className="flex items-center gap-3 px-3 py-2.5">
@@ -590,30 +579,35 @@ function TableConfigRow({
           type="checkbox"
           checked={included}
           onChange={onToggle}
-          className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+          className="h-4 w-4 rounded border-border-subtle"
+          aria-label={`Include ${table}`}
         />
-        <Table2 className="h-4 w-4 text-slate-400" />
-        <span className="font-mono text-sm text-slate-800">{table}</span>
+        <Table2 className="h-4 w-4 shrink-0 text-faint" />
+        <span className="truncate font-mono text-sm text-ink">{table}</span>
         {included && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="ml-auto flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
+            className="ml-auto flex shrink-0 items-center gap-1 rounded text-xs font-medium text-brand-600 transition-colors duration-(--motion-fast) hover:text-brand-700"
+            aria-expanded={expanded}
           >
             Configure
             <ChevronDown
-              className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')}
+              className={cn(
+                'h-3.5 w-3.5 transition-transform duration-(--motion-base) ease-out-soft',
+                expanded && 'rotate-180',
+              )}
             />
           </button>
         )}
       </div>
 
-      {included && expanded && (
-        <div className="space-y-4 border-t border-brand-100 px-3 py-3">
+      {config && expanded && (
+        <div className="animate-rise space-y-4 border-t border-brand-200/60 px-3 py-3">
           <Field label="Target table" htmlFor={`tt-${table}`}>
             <Input
               id={`tt-${table}`}
-              value={config!.target_table}
+              value={config.target_table}
               onChange={(e) => onChange({ target_table: e.target.value })}
               placeholder={table}
               className="font-mono text-sm"
@@ -621,52 +615,53 @@ function TableConfigRow({
           </Field>
 
           <div>
-            <p className="mb-1.5 text-sm font-medium text-slate-700">Columns</p>
-            <div className="flex gap-4 text-sm">
-              <label className="flex items-center gap-1.5">
+            <p className="mb-1.5 text-sm font-medium text-ink">Columns</p>
+            <div className="flex gap-4 text-sm text-ink">
+              <label className="flex cursor-pointer items-center gap-1.5">
                 <input
                   type="radio"
-                  checked={config!.allColumns}
+                  name={`cols-mode-${table}`}
+                  checked={config.allColumns}
                   onChange={() => onChange({ allColumns: true })}
-                  className="text-brand-600 focus:ring-brand-500"
                 />
                 All columns
               </label>
-              <label className="flex items-center gap-1.5">
+              <label className="flex cursor-pointer items-center gap-1.5">
                 <input
                   type="radio"
-                  checked={!config!.allColumns}
+                  name={`cols-mode-${table}`}
+                  checked={!config.allColumns}
                   onChange={() => onChange({ allColumns: false })}
-                  className="text-brand-600 focus:ring-brand-500"
                 />
                 Select columns
               </label>
             </div>
 
-            {!config!.allColumns && (
+            {!config.allColumns && (
               <div className="mt-2">
                 {columnsQuery.isLoading ? (
-                  <div className="flex items-center gap-2 py-2 text-xs text-slate-500">
+                  <div className="flex items-center gap-2 py-2 text-xs text-muted">
                     <Spinner className="h-4 w-4" /> Loading columns…
                   </div>
                 ) : columnsQuery.isError ? (
-                  <p className="text-xs text-red-600">
+                  <p className="text-xs text-error">
                     {getApiErrorMessage(columnsQuery.error)}
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {columnNames.map((name) => {
-                      const on = config!.selected_columns.includes(name)
+                      const on = config.selected_columns.includes(name)
                       return (
                         <button
                           type="button"
                           key={name}
                           onClick={() => toggleColumn(name)}
+                          aria-pressed={on}
                           className={cn(
-                            'rounded-full px-2.5 py-1 font-mono text-xs ring-1 ring-inset transition-colors',
+                            'rounded-full px-2.5 py-1 font-mono text-xs ring-1 ring-inset transition-colors duration-(--motion-fast)',
                             on
-                              ? 'bg-brand-600 text-white ring-brand-600'
-                              : 'bg-white text-slate-600 ring-slate-200 hover:ring-brand-300',
+                              ? 'bg-brand-600 text-brand-fg ring-brand-600'
+                              : 'bg-surface text-muted ring-line hover:ring-brand-300',
                           )}
                         >
                           {name}
@@ -680,20 +675,18 @@ function TableConfigRow({
           </div>
 
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-sm font-medium text-slate-700">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-ink">
                 Filters{' '}
-                <span className="font-normal text-slate-400">
-                  (AND-combined)
-                </span>
+                <span className="font-normal text-faint">(AND-combined)</span>
               </p>
               <Button size="sm" variant="ghost" type="button" onClick={addFilter}>
                 <Plus className="h-3.5 w-3.5" />
                 Add
               </Button>
             </div>
-            {config!.filters.length === 0 ? (
-              <p className="text-xs text-slate-400">
+            {config.filters.length === 0 ? (
+              <p className="text-xs text-faint">
                 No filters — the whole table is copied.
               </p>
             ) : (
@@ -703,7 +696,7 @@ function TableConfigRow({
                     <option key={n} value={n} />
                   ))}
                 </datalist>
-                {config!.filters.map((f, i) => (
+                {config.filters.map((f, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <Input
                       list={`cols-${table}`}
@@ -711,6 +704,7 @@ function TableConfigRow({
                       onChange={(e) => updateFilter(i, { column: e.target.value })}
                       placeholder="column"
                       className="h-9 flex-1 font-mono text-xs"
+                      aria-label="Filter column"
                     />
                     <Select
                       value={f.op}
@@ -718,6 +712,7 @@ function TableConfigRow({
                         updateFilter(i, { op: e.target.value as FilterOp })
                       }
                       className="h-9 w-36 text-xs"
+                      aria-label="Filter operator"
                     >
                       {FILTER_OPS.map((o) => (
                         <option key={o.value} value={o.value}>
@@ -730,15 +725,17 @@ function TableConfigRow({
                       onChange={(e) => updateFilter(i, { value: e.target.value })}
                       placeholder={LIST_OPS.includes(f.op) ? 'a, b, c' : 'value'}
                       className="h-9 flex-1 text-xs"
+                      aria-label="Filter value"
                     />
-                    <button
+                    <Button
                       type="button"
+                      size="icon"
+                      variant="ghostDanger"
                       onClick={() => removeFilter(i)}
-                      className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                       aria-label="Remove filter"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>

@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 
 import { useAuth } from '@/auth/AuthContext'
 import { getApiErrorMessage } from '@/lib/api'
+import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
@@ -57,11 +58,11 @@ export function RegisterPage() {
     return (
       <AuthShell title="Account created" subtitle="One more step before you can sign in">
         <div className="flex flex-col items-center text-center">
-          <CheckCircle2 className="mb-3 h-12 w-12 text-emerald-500" />
-          <p className="text-sm text-slate-600">
-            Your account is <strong>pending approval</strong>. An administrator
-            must approve it before you can sign in. You&apos;ll be able to log in
-            once that&apos;s done.
+          <CheckCircle2 className="animate-pop mb-3 h-12 w-12 text-success" />
+          <p className="text-sm text-muted">
+            Your account is <strong className="text-ink">pending approval</strong>.
+            An administrator must approve it before you can sign in. You&apos;ll be
+            able to log in once that&apos;s done.
           </p>
           <Link to="/login" className="mt-6 w-full">
             <Button className="w-full">Back to sign in</Button>
@@ -78,19 +79,17 @@ export function RegisterPage() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
+          <Link
+            to="/login"
+            className="font-medium text-brand-600 transition-colors duration-(--motion-fast) hover:text-brand-700"
+          >
             Sign in
           </Link>
         </>
       }
     >
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        {formError && (
-          <div className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{formError}</span>
-          </div>
-        )}
+        {formError && <Alert tone="error">{formError}</Alert>}
 
         <Field label="Full name" htmlFor="full_name" error={errors.full_name?.message}>
           <Input

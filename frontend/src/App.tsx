@@ -37,6 +37,11 @@ const MigrationDetailPage = lazy(() =>
     default: m.MigrationDetailPage,
   })),
 )
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((m) => ({
+    default: m.SettingsPage,
+  })),
+)
 const UsersPage = lazy(() =>
   import('@/pages/admin/UsersPage').then((m) => ({ default: m.UsersPage })),
 )
@@ -82,6 +87,7 @@ function App() {
             <Route path="migrations" element={<MigrationsPage />} />
             <Route path="migrations/new" element={<MigrationCreatePage />} />
             <Route path="migrations/:id" element={<MigrationDetailPage />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>
 

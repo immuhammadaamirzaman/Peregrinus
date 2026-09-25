@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { CheckCircle2, Plug, XCircle } from 'lucide-react'
+import { Plug } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { connectionsApi } from '@/api/connections'
@@ -12,6 +12,7 @@ import {
 } from '@/hooks/useConnections'
 import { DB_TYPES, SSL_MODES, dbMeta } from '@/constants/db'
 import { getApiErrorMessage } from '@/lib/api'
+import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
@@ -383,8 +384,8 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
           </>
         )}
 
-        <details className="rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
-          <summary className="cursor-pointer text-sm font-medium text-slate-600">
+        <details className="rounded-lg border border-line bg-surface-secondary px-3 py-2">
+          <summary className="cursor-pointer text-sm font-medium text-muted transition-colors duration-(--motion-fast) hover:text-ink">
             Advanced parameters (JSON)
           </summary>
           <div className="pt-3">
@@ -407,29 +408,18 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
         </details>
 
         {testResult && (
-          <div
-            className={
-              testResult.ok
-                ? 'flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 ring-1 ring-emerald-200'
-                : 'flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200'
-            }
+          <Alert
+            tone={testResult.ok ? 'success' : 'error'}
+            title={testResult.message}
           >
-            {testResult.ok ? (
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-            ) : (
-              <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            {testResult.ok && (
+              <p className="text-xs opacity-80">
+                {testResult.server_version && `Server: ${testResult.server_version}`}
+                {testResult.latency_ms != null &&
+                  ` · ${testResult.latency_ms.toFixed(0)} ms`}
+              </p>
             )}
-            <div>
-              <p className="font-medium">{testResult.message}</p>
-              {testResult.ok && (
-                <p className="text-xs opacity-80">
-                  {testResult.server_version && `Server: ${testResult.server_version}`}
-                  {testResult.latency_ms != null &&
-                    ` · ${testResult.latency_ms.toFixed(0)} ms`}
-                </p>
-              )}
-            </div>
-          </div>
+          </Alert>
         )}
       </form>
     </Modal>

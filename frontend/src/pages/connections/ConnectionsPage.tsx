@@ -1,12 +1,5 @@
 import { useState } from 'react'
-import {
-  Database,
-  Pencil,
-  Plug,
-  Plus,
-  ShieldCheck,
-  Trash2,
-} from 'lucide-react'
+import { Database, Pencil, Plug, Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { connectionsApi } from '@/api/connections'
@@ -22,6 +15,7 @@ import { Card } from '@/components/ui/Card'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
+import { Stagger } from '@/components/ui/Motion'
 import { PageLoader } from '@/components/ui/Spinner'
 import { ConnectionFormModal } from '@/pages/connections/ConnectionFormModal'
 import type { ConnectionRead } from '@/types/api'
@@ -113,9 +107,7 @@ export function ConnectionsPage() {
           action={
             <CanWrite
               fallback={
-                <p className="text-sm text-slate-500">
-                  You have read-only access.
-                </p>
+                <p className="text-sm text-muted">You have read-only access.</p>
               }
             >
               <Button onClick={openCreate}>
@@ -126,29 +118,33 @@ export function ConnectionsPage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Stagger className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {data.map((conn) => (
-            <Card key={conn.id} className="flex flex-col p-5">
+            <Card key={conn.id} interactive className="flex flex-col p-5">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
                     <Database className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-900">
-                      {conn.name}
-                    </p>
-                    <p className="text-xs text-slate-400">
+                    <p className="truncate font-medium text-ink">{conn.name}</p>
+                    <p className="text-xs text-faint">
                       {DB_TYPE_LABELS[conn.db_type]}
                     </p>
                   </div>
                 </div>
                 {conn.has_password && (
-                  <ShieldCheck className="h-4 w-4 text-emerald-500" aria-label="Credential stored" />
+                  <ShieldCheck
+                    className="h-4 w-4 shrink-0 text-success"
+                    aria-label="Credential stored"
+                  />
                 )}
               </div>
 
-              <p className="mt-4 truncate font-mono text-xs text-slate-500" title={target(conn)}>
+              <p
+                className="mt-4 truncate font-mono text-xs text-muted"
+                title={target(conn)}
+              >
                 {target(conn)}
               </p>
 
@@ -156,12 +152,12 @@ export function ConnectionsPage() {
                 <Badge tone={conn.ssl_mode === 'disable' ? 'neutral' : 'success'}>
                   SSL: {conn.ssl_mode}
                 </Badge>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-faint">
                   Added {formatRelative(conn.created_at)}
                 </span>
               </div>
 
-              <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4">
+              <div className="mt-5 flex items-center gap-2 border-t border-line pt-4">
                 <Button
                   size="sm"
                   variant="outline"
@@ -178,9 +174,10 @@ export function ConnectionsPage() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="ghost"
-                    className="ml-auto text-red-600 hover:bg-red-50"
+                    variant="ghostDanger"
+                    className="ml-auto"
                     onClick={() => setDeleting(conn)}
+                    aria-label={`Delete ${conn.name}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -188,7 +185,7 @@ export function ConnectionsPage() {
               </div>
             </Card>
           ))}
-        </div>
+        </Stagger>
       )}
 
       <ConnectionFormModal

@@ -19,8 +19,8 @@ from app.core.ratelimit import limiter
 from app.database import get_db
 from app.models.user import User
 from app.schemas.auth import RegisterRequest, Token
-from app.schemas.user import UserRead
-from app.services import auth_service
+from app.schemas.user import UserPreferencesUpdate, UserRead
+from app.services import auth_service, user_service
 from app.services.auth_service import IssuedTokens
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -96,3 +96,13 @@ async def logout(
 @router.get("/me", response_model=UserRead)
 async def me(current_user: User = Depends(get_current_user)) -> User:
     return current_user
+
+
+@router.patch("/me/preferences", response_model=UserRead)
+async def update_my_preferences(
+    body: UserPreferencesUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Persist the authenticated user's UI preferences (theme, custom themes, etc.)."""
+    return await user_service.update_preferences(db, current_user, body.preferences)

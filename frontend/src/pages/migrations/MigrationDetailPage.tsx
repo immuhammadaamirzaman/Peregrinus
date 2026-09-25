@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Ban,
@@ -24,6 +23,7 @@ import {
 import { useMigrationStream } from '@/hooks/useMigrationStream'
 import { useAuth } from '@/auth/AuthContext'
 import { isActive, isStartable } from '@/constants/db'
+import { MOTION_KEEP } from '@/constants/motion'
 import { getApiErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import {
@@ -35,6 +35,7 @@ import {
 import { CanWrite } from '@/components/RoleGate'
 import { MigrationStatusBadge, TableStatusBadge } from '@/components/StatusBadge'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
@@ -44,15 +45,22 @@ import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { Reveal } from '@/components/ui/Motion'
 import { PageLoader } from '@/components/ui/Spinner'
 import { Table, Tbody, Td, Th, Thead, Tr } from '@/components/ui/Table'
 import type { LogLevel, MigrationDetail } from '@/types/api'
 
-const LOG_COLOR: Record<LogLevel, string> = {
-  debug: 'text-slate-400',
-  info: 'text-slate-200',
-  warn: 'text-amber-300',
-  error: 'text-red-400',
+/**
+ * Log line colours, on the `code-bg` surface rather than the page surface.
+ * Previously these were `text-slate-400` / `text-slate-200`, chosen for a dark
+ * console — but the console itself was rendered on `surface-secondary`, which is
+ * near-white in light themes, so debug and info text was effectively invisible.
+ */
+const LOG_LEVEL_CLASS: Record<LogLevel, string> = {
+  debug: 'text-code-fg/55',
+  info: 'text-code-fg',
+  warn: 'text-warning',
+  error: 'text-error',
 }
 
 export function MigrationDetailPage() {
@@ -79,8 +87,7 @@ export function MigrationDetailPage() {
   }, [connections.data])
 
   if (isLoading) return <PageLoader label="Loading migration…" />
-  if (isError || !migration)
-    return <ErrorState error={error} onRetry={refetch} />
+  if (isError || !migration) return <ErrorState error={error} onRetry={refetch} />
 
   // Prefer the granular SSE progress while streaming; fall back to polled data.
   const processed = progress?.processed_rows ?? migration.processed_rows
@@ -88,10 +95,7 @@ export function MigrationDetailPage() {
   const pct = progressPct(processed, total)
   const active = isActive(migration.status)
 
-  async function action(
-    fn: () => Promise<unknown>,
-    okMsg: string,
-  ): Promise<void> {
+  async function action(fn: () => Promise<unknown>, okMsg: string): Promise<void> {
     try {
       await fn()
       toast.success(okMsg)
@@ -104,14 +108,14 @@ export function MigrationDetailPage() {
     <>
       <PageHeader
         title={
-          <span className="flex items-center gap-3">
+          <span className="flex flex-wrap items-center gap-3">
             {migration.name}
             <MigrationStatusBadge status={migration.status} />
           </span>
         }
         description={migration.description || undefined}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link to="/migrations">
               <Button variant="outline" size="sm">
                 <ArrowLeft className="h-4 w-4" />
@@ -152,9 +156,9 @@ export function MigrationDetailPage() {
               )}
               <Button
                 size="sm"
-                variant="ghost"
-                className="text-red-600 hover:bg-red-50"
+                variant="ghostDanger"
                 onClick={() => setConfirmDelete(true)}
+                aria-label="Delete migration"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -164,67 +168,62 @@ export function MigrationDetailPage() {
       />
 
       {/* Route + progress overview */}
-      <Card className="mb-5">
-        <CardBody className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-1.5">
-              <Database className="h-4 w-4 text-slate-400" />
-              {connName(migration.source_connection_id)}
-            </span>
-            <ArrowRight className="h-4 w-4 text-slate-400" />
-            <span className="flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-1.5">
-              <Database className="h-4 w-4 text-slate-400" />
-              {connName(migration.target_connection_id)}
-            </span>
-          </div>
-
-          <div>
-            <div className="mb-1.5 flex items-center justify-between text-sm">
-              <span className="font-medium text-slate-700">
-                {formatNumber(processed)} / {formatNumber(total)} rows
-              </span>
-              <span className="text-slate-500">{pct}%</span>
+      <Reveal>
+        <Card className="mb-5">
+          <CardBody className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <ConnPill name={connName(migration.source_connection_id)} />
+              <ArrowRight className="h-4 w-4 shrink-0 text-faint" />
+              <ConnPill name={connName(migration.target_connection_id)} />
             </div>
-            <ProgressBar
-              value={pct}
-              tone={
-                migration.status === 'failed'
-                  ? 'danger'
-                  : migration.status === 'completed'
-                    ? 'success'
-                    : 'info'
-              }
-              animated={active}
-              className="h-2.5"
-            />
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <Meta label="Started" value={formatDateTime(migration.started_at)} />
-            <Meta label="Finished" value={formatDateTime(migration.finished_at)} />
-            <Meta
-              label="Duration"
-              value={formatDuration(migration.started_at, migration.finished_at)}
-            />
-            <Meta
-              label="On conflict"
-              value={String(migration.options?.on_conflict ?? 'error')}
-            />
-          </div>
-
-          {migration.error_message && (
-            <div className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200">
-              {migration.error_message}
+            <div>
+              <div className="mb-1.5 flex items-center justify-between text-sm">
+                <span className="font-medium text-ink">
+                  {formatNumber(processed)} / {formatNumber(total)} rows
+                </span>
+                <span className="text-muted">{pct}%</span>
+              </div>
+              <ProgressBar
+                value={pct}
+                label="Overall migration progress"
+                tone={
+                  migration.status === 'failed'
+                    ? 'danger'
+                    : migration.status === 'completed'
+                      ? 'success'
+                      : 'info'
+                }
+                animated={active}
+                className="h-2.5"
+              />
             </div>
-          )}
-        </CardBody>
-      </Card>
+
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <Meta label="Started" value={formatDateTime(migration.started_at)} />
+              <Meta label="Finished" value={formatDateTime(migration.finished_at)} />
+              <Meta
+                label="Duration"
+                value={formatDuration(migration.started_at, migration.finished_at)}
+              />
+              <Meta
+                label="On conflict"
+                value={String(migration.options?.on_conflict ?? 'error')}
+              />
+            </div>
+
+            {migration.error_message && (
+              <Alert tone="error">{migration.error_message}</Alert>
+            )}
+          </CardBody>
+        </Card>
+      </Reveal>
 
       {/* Options — editable while the migration is a draft */}
       <MigrationOptionsCard migration={migration} />
 
       {/* Tables */}
-      <Card className="mb-5">
+      <Card className="mb-5 overflow-hidden">
         <CardHeader title={`Tables (${migration.tables.length})`} />
         <Table>
           <Thead>
@@ -243,15 +242,13 @@ export function MigrationDetailPage() {
                 return (
                   <Tr key={t.id}>
                     <Td>
-                      <span className="flex items-center gap-1.5 font-mono text-xs">
+                      <span className="flex items-center gap-1.5 font-mono text-xs text-ink">
                         {t.source_table}
-                        <ArrowRight className="h-3 w-3 text-slate-400" />
+                        <ArrowRight className="h-3 w-3 shrink-0 text-faint" />
                         {t.target_table}
                       </span>
                       {t.error_message && (
-                        <p className="mt-1 text-xs text-red-600">
-                          {t.error_message}
-                        </p>
+                        <p className="mt-1 text-xs text-error">{t.error_message}</p>
                       )}
                     </Td>
                     <Td>
@@ -261,6 +258,7 @@ export function MigrationDetailPage() {
                       <div className="flex items-center gap-2">
                         <ProgressBar
                           value={tpct}
+                          label={`Progress for ${t.source_table}`}
                           tone={
                             t.status === 'failed'
                               ? 'danger'
@@ -271,12 +269,12 @@ export function MigrationDetailPage() {
                           animated={t.status === 'running'}
                           className="w-28"
                         />
-                        <span className="w-9 text-right text-xs text-slate-500">
+                        <span className="w-9 text-right text-xs text-muted">
                           {tpct}%
                         </span>
                       </div>
                     </Td>
-                    <Td className="whitespace-nowrap text-xs text-slate-500">
+                    <Td className="whitespace-nowrap text-xs text-muted">
                       {formatNumber(t.rows_processed)} / {formatNumber(t.rows_total)}
                     </Td>
                   </Tr>
@@ -287,7 +285,7 @@ export function MigrationDetailPage() {
       </Card>
 
       {/* Live log console */}
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader
           title={
             <span className="flex items-center gap-2">
@@ -298,7 +296,10 @@ export function MigrationDetailPage() {
           action={
             streaming ? (
               <Badge tone="info" dot>
-                <Radio className="h-3 w-3 animate-pulse" /> Live
+                {/* MOTION_KEEP: this pulse is the only signal that the stream is
+                    still connected, so it survives the motion opt-out. */}
+                <Radio className={cn('h-3 w-3 animate-breathe', MOTION_KEEP)} />
+                Live
               </Badge>
             ) : (
               <Badge tone="neutral">{logs.length} lines</Badge>
@@ -313,8 +314,8 @@ export function MigrationDetailPage() {
         title="Delete migration"
         message={
           <>
-            Delete <strong>{migration.name}</strong> and its logs? This
-            can&apos;t be undone.
+            Delete <strong>{migration.name}</strong> and its logs? This can&apos;t
+            be undone.
           </>
         }
         confirmLabel="Delete"
@@ -332,11 +333,20 @@ export function MigrationDetailPage() {
   )
 }
 
+function ConnPill({ name }: { name: string }) {
+  return (
+    <span className="flex items-center gap-1.5 rounded-lg bg-surface-hover px-3 py-1.5 text-muted">
+      <Database className="h-4 w-4 shrink-0 text-faint" />
+      {name}
+    </span>
+  )
+}
+
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-0.5 font-medium text-slate-800">{value}</p>
+      <p className="text-xs uppercase tracking-wide text-faint">{label}</p>
+      <p className="mt-0.5 font-medium text-ink">{value}</p>
     </div>
   )
 }
@@ -366,9 +376,7 @@ function MigrationOptionsCard({ migration }: { migration: MigrationDetail }) {
 
   const [batchSize, setBatchSize] = useState(saved.batch_size)
   const [maxInFlight, setMaxInFlight] = useState(saved.max_in_flight)
-  const [onConflict, setOnConflict] = useState<'error' | 'skip'>(
-    saved.on_conflict,
-  )
+  const [onConflict, setOnConflict] = useState<'error' | 'skip'>(saved.on_conflict)
   const [createTables, setCreateTables] = useState(saved.create_tables)
 
   // Peek at the target's tables so we can warn when it's empty and create is
@@ -473,7 +481,7 @@ function MigrationOptionsCard({ migration }: { migration: MigrationDetail }) {
           </Field>
         </div>
 
-        <div className="border-t border-slate-100 pt-4">
+        <div className="border-t border-line pt-4">
           <label
             className={cn(
               'flex items-start gap-3',
@@ -485,13 +493,13 @@ function MigrationOptionsCard({ migration }: { migration: MigrationDetail }) {
               checked={createTables}
               disabled={!editable}
               onChange={(e) => setCreateTables(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-0.5 h-4 w-4 rounded border-border-subtle disabled:cursor-not-allowed disabled:opacity-60"
             />
             <span>
-              <span className="block text-sm font-medium text-slate-800">
+              <span className="block text-sm font-medium text-ink">
                 Create target tables automatically
               </span>
-              <span className="mt-0.5 block text-xs text-slate-500">
+              <span className="mt-0.5 block text-xs text-muted">
                 If a target table doesn&apos;t exist, create it from the source
                 schema before copying. Leave unchecked if the target database
                 already has tables.
@@ -500,18 +508,15 @@ function MigrationOptionsCard({ migration }: { migration: MigrationDetail }) {
           </label>
 
           {targetHasNoTables && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-amber-200">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                The target database has no tables. Enable “Create target tables”
-                or create them manually before running.
-              </span>
-            </div>
+            <Alert tone="warning" className="mt-3">
+              The target database has no tables. Enable “Create target tables” or
+              create them manually before running.
+            </Alert>
           )}
         </div>
 
         {editable && (
-          <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+          <div className="flex items-center justify-end gap-2 border-t border-line pt-4">
             <Button
               variant="outline"
               size="sm"
@@ -561,29 +566,34 @@ function LogConsole({
     <div
       ref={ref}
       onScroll={onScroll}
-      className="max-h-96 overflow-y-auto rounded-b-xl bg-slate-900 px-4 py-3 font-mono text-xs leading-relaxed"
+      className="max-h-96 overflow-y-auto bg-code-bg px-4 py-3 font-mono text-xs leading-relaxed text-code-fg"
     >
       {logs.length === 0 ? (
-        <p className="py-6 text-center text-slate-500">
+        <p className="py-6 text-center text-code-fg/55">
           {status === 'draft'
             ? 'Not started yet — start the migration to see live logs.'
             : 'Waiting for log output…'}
         </p>
       ) : (
+        // Deliberately no entrance animation on log lines. This list re-renders
+        // on every SSE frame, and animating each arrival would both look like
+        // noise and put avoidable work on the main thread during a migration.
         logs.map((log) => (
           <div key={log.id} className="flex gap-3">
-            <span className="shrink-0 text-slate-600">
+            <span className="shrink-0 text-code-fg/45">
               {new Date(log.created_at).toLocaleTimeString()}
             </span>
             <span
-              className={cn(
-                'shrink-0 uppercase',
-                LOG_COLOR[log.level] ?? 'text-slate-300',
-              )}
+              className={cn('w-12 shrink-0 uppercase', LOG_LEVEL_CLASS[log.level])}
             >
               {log.level}
             </span>
-            <span className={cn('whitespace-pre-wrap break-all', LOG_COLOR[log.level])}>
+            <span
+              className={cn(
+                'whitespace-pre-wrap break-all',
+                LOG_LEVEL_CLASS[log.level],
+              )}
+            >
               {log.message}
             </span>
           </div>

@@ -3,10 +3,10 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { AlertCircle } from 'lucide-react'
 
 import { useAuth } from '@/auth/AuthContext'
 import { getApiErrorMessage } from '@/lib/api'
+import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
@@ -52,19 +52,17 @@ export function LoginPage() {
       footer={
         <>
           Don&apos;t have an account?{' '}
-          <Link to="/register" className="font-medium text-brand-600 hover:text-brand-700">
+          <Link
+            to="/register"
+            className="font-medium text-brand-600 transition-colors duration-(--motion-fast) hover:text-brand-700"
+          >
             Create one
           </Link>
         </>
       }
     >
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        {formError && (
-          <div className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{formError}</span>
-          </div>
-        )}
+        {formError && <Alert tone="error">{formError}</Alert>}
 
         <Field label="Email" htmlFor="email" error={errors.email?.message} required>
           <Input

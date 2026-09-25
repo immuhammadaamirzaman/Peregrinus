@@ -6,18 +6,21 @@ import { Toaster } from 'sonner'
 
 import App from './App.tsx'
 import { AuthProvider } from '@/auth/AuthContext'
+import { ThemeProvider } from '@/context/ThemeContext'
 import { queryClient } from '@/lib/queryClient'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <App />
-          <Toaster richColors position="top-right" closeButton />
-        </AuthProvider>
-      </QueryClientProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <App />
+            <Toaster richColors position="top-right" closeButton />
+          </AuthProvider>
+        </QueryClientProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   </StrictMode>,
 )

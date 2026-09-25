@@ -78,7 +78,7 @@ export function UsersPage() {
       ) : isError ? (
         <ErrorState error={error} onRetry={refetch} />
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <Table>
             <Thead>
               <Tr>
@@ -97,21 +97,19 @@ export function UsersPage() {
                   <Tr key={u.id}>
                     <Td>
                       <div className="flex items-center gap-2">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
                           {(u.full_name || u.email)[0]?.toUpperCase()}
                         </span>
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-900">
+                          <p className="truncate font-medium text-ink">
                             {u.full_name || '—'}
                             {isSelf && (
-                              <span className="ml-1.5 text-xs font-normal text-slate-400">
+                              <span className="ml-1.5 text-xs font-normal text-faint">
                                 (you)
                               </span>
                             )}
                           </p>
-                          <p className="truncate text-xs text-slate-500">
-                            {u.email}
-                          </p>
+                          <p className="truncate text-xs text-muted">{u.email}</p>
                         </div>
                       </div>
                     </Td>
@@ -121,6 +119,7 @@ export function UsersPage() {
                         disabled={isSelf || busy}
                         onChange={(e) => changeRole(u, e.target.value as Role)}
                         className="h-9 w-28 text-xs"
+                        aria-label={`Role for ${u.email}`}
                       >
                         <option value="admin">Admin</option>
                         <option value="user">User</option>
@@ -130,12 +129,12 @@ export function UsersPage() {
                     <Td>
                       <UserStatusBadge status={u.status} />
                     </Td>
-                    <Td className="whitespace-nowrap text-xs text-slate-500">
+                    <Td className="whitespace-nowrap text-xs text-muted">
                       {u.last_login_at ? formatRelative(u.last_login_at) : 'Never'}
                     </Td>
                     <Td className="text-right">
                       {isSelf ? (
-                        <span className="text-xs text-slate-400">—</span>
+                        <span className="text-xs text-faint">—</span>
                       ) : (
                         <div className="flex items-center justify-end gap-1">
                           {u.status === 'pending' && (
@@ -144,7 +143,7 @@ export function UsersPage() {
                                 size="sm"
                                 variant="ghost"
                                 loading={busy}
-                                className="text-emerald-600 hover:bg-emerald-50"
+                                className="text-success hover:bg-success-soft"
                                 onClick={() => changeStatus(u, 'approved')}
                               >
                                 <Check className="h-3.5 w-3.5" />
@@ -152,8 +151,7 @@ export function UsersPage() {
                               </Button>
                               <Button
                                 size="sm"
-                                variant="ghost"
-                                className="text-red-600 hover:bg-red-50"
+                                variant="ghostDanger"
                                 onClick={() => changeStatus(u, 'rejected')}
                               >
                                 <ShieldX className="h-3.5 w-3.5" />
@@ -177,7 +175,7 @@ export function UsersPage() {
                               size="sm"
                               variant="ghost"
                               loading={busy}
-                              className="text-emerald-600 hover:bg-emerald-50"
+                              className="text-success hover:bg-success-soft"
                               onClick={() => changeStatus(u, 'approved')}
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
@@ -186,9 +184,9 @@ export function UsersPage() {
                           )}
                           <Button
                             size="sm"
-                            variant="ghost"
-                            className="text-red-600 hover:bg-red-50"
+                            variant="ghostDanger"
                             onClick={() => setDeleting(u)}
+                            aria-label={`Delete ${u.email}`}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -200,8 +198,8 @@ export function UsersPage() {
               })}
               {data && data.length === 0 && (
                 <Tr>
-                  <Td className="py-8 text-center text-slate-500">
-                    <UserCog className="mx-auto mb-2 h-6 w-6 text-slate-300" />
+                  <Td className="py-8 text-center text-muted" colSpan={5}>
+                    <UserCog className="mx-auto mb-2 h-6 w-6 text-faint" />
                     No users found.
                   </Td>
                 </Tr>

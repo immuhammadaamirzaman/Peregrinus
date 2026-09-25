@@ -1,9 +1,33 @@
 @import 'tailwindcss';
 
-/* ── Design tokens (Tailwind v4 @theme) ─────────────────────────────
-   Brand is a calm indigo/slate palette suited to a data tool. Colors are
-   exposed as utilities (bg-brand-600, text-brand-500, …) automatically. */
-@theme {
+/* ==========================================================================
+   DataMovers — design tokens
+   --------------------------------------------------------------------------
+   Every colour below is registered with Tailwind via `@theme`, which makes
+   Tailwind emit `:root { --color-x: … }` and generate utilities that resolve
+   through `var(--color-x)` at paint time.
+
+   That indirection is the whole point: `ThemeContext.applyThemeToDom()` writes
+   the active theme's values as *inline custom properties on <html>*, which
+   override the `:root` defaults. Because the utilities reference the variable
+   (not a baked literal), `bg-brand-600`, `text-ink`, `border-line`, … all
+   re-colour instantly on theme switch — no class swapping, no re-render.
+
+   The values here are the light theme, and double as the pre-hydration
+   fallback. They mirror `lightTheme` in src/constants/themes.ts.
+
+   `static` is required, not cosmetic: by default Tailwind only emits the theme
+   variables it sees used by a utility, so a token nothing happens to reference
+   yet (brand-900, say) would be missing from `:root`. The ThemeProvider writes
+   the full token set at runtime and the theme editor exposes all of it, so every
+   token needs to exist as a declared variable with a light-theme fallback.
+   ========================================================================== */
+
+@theme static {
+  /* ── Brand ramp ──────────────────────────────────────────────────────────
+     In light themes 50 is the palest tint and 900 the deepest. Dark themes
+     *invert* this ramp (see themes.ts) so that the `bg-brand-50` +
+     `text-brand-700` pairing used throughout the UI stays legible. */
   --color-brand-50: #eef2ff;
   --color-brand-100: #e0e7ff;
   --color-brand-200: #c7d2fe;
@@ -14,42 +38,621 @@
   --color-brand-700: #4338ca;
   --color-brand-800: #3730a3;
   --color-brand-900: #312e81;
+  /* Foreground for text/icons sitting on a brand-600 fill. */
+  --color-brand-fg: #ffffff;
 
-  --color-canvas: #f7f8fb;
+  /* ── Base ──────────────────────────────────────────────────────────────── */
+  --color-canvas: #f6f7fb;
   --color-ink: #0f172a;
-  --color-line: #e2e8f0;
+  --color-line: #e4e9f0;
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
-    Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Consolas,
-    monospace;
+  /* ── Surfaces ──────────────────────────────────────────────────────────── */
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f8fafc;
+  --color-surface-raised: #ffffff;
+  --color-surface-hover: #f1f5f9;
+  --color-surface-active: #e2e8f0;
+
+  /* ── Text ──────────────────────────────────────────────────────────────── */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #8494a8;
+
+  /* Short aliases so the utilities read well: text-fg / text-muted /
+     text-faint instead of the clumsy text-text-secondary. These resolve
+     through the canonical tokens above, so overriding those is enough. */
+  --color-fg: var(--color-text-primary);
+  --color-muted: var(--color-text-secondary);
+  --color-faint: var(--color-text-tertiary);
+
+  /* ── Borders ───────────────────────────────────────────────────────────── */
+  --color-border-subtle: #cbd5e1;
+  --color-border-default: #94a3b8;
+
+  /* ── Semantic ──────────────────────────────────────────────────────────────
+     Each tone carries three tokens:
+       <tone>       — the saturated colour (icons, bars, dots)
+       <tone>-soft  — a tinted background for callout panels
+       <tone>-fg    — text/icon colour that is legible on `-soft`
+     The soft/fg split is what lets alert panels survive a dark theme; the old
+     hardcoded bg-red-50 / text-red-700 pairing could not. */
+  --color-success: #059669;
+  --color-success-soft: #ecfdf5;
+  --color-success-fg: #046c4e;
+
+  --color-warning: #d97706;
+  --color-warning-soft: #fffbeb;
+  --color-warning-fg: #92400e;
+
+  --color-error: #dc2626;
+  --color-error-soft: #fef2f2;
+  --color-error-fg: #b42318;
+
+  --color-info: #2563eb;
+  --color-info-soft: #eff6ff;
+  --color-info-fg: #1d4ed8;
+
+  /* ── Misc ──────────────────────────────────────────────────────────────── */
+  /* Modal / drawer scrim. 8-digit hex so the alpha travels with the theme. */
+  --color-overlay: #0f172a73;
+  /* Log console. Stays a dark terminal in light themes by design. */
+  --color-code-bg: #0b1220;
+  --color-code-fg: #cbd5e1;
+
+  /* ── Elevation ─────────────────────────────────────────────────────────────
+     Derived from --color-ink via color-mix so shadows tint with the theme and
+     all but vanish on dark canvases (where they read as noise anyway). */
+  --shadow-soft: 0 1px 2px 0 color-mix(in oklab, var(--color-ink) 7%, transparent);
+  --shadow-raised: 0 4px 12px -2px color-mix(in oklab, var(--color-ink) 12%, transparent),
+    0 2px 4px -2px color-mix(in oklab, var(--color-ink) 8%, transparent);
+  --shadow-overlay: 0 24px 48px -12px color-mix(in oklab, var(--color-ink) 28%, transparent);
+
+  /* ── Easing ────────────────────────────────────────────────────────────── */
+  --ease-out-soft: cubic-bezier(0.22, 0.68, 0.24, 1);
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+
+  /* ── Animations ──────────────────────────────────────────────────────────
+     Durations/distances come from the --motion-* tier variables below, so a
+     single attribute on <html> rescales every animation in the app. */
+  --animate-fade: dm-fade var(--motion-base) var(--ease-out-soft) both;
+  --animate-rise: dm-rise var(--motion-base) var(--ease-out-soft) both;
+  --animate-pop: dm-pop var(--motion-base) var(--ease-spring) both;
+  --animate-slide-r: dm-slide-r var(--motion-base) var(--ease-out-soft) both;
+  --animate-slide-l: dm-slide-l var(--motion-base) var(--ease-out-soft) both;
+  --animate-shimmer: dm-shimmer 1.4s linear infinite;
+  --animate-breathe: dm-breathe 2s var(--ease-out-soft) infinite;
 }
 
-html,
-body,
-#root {
-  height: 100%;
+/* ==========================================================================
+   Motion tiers
+   --------------------------------------------------------------------------
+   `data-motion` on <html> is set by ThemeContext from the user's preference.
+   Only these few variables change between tiers — every animation and
+   transition in the app is expressed in terms of them, so switching tiers
+   costs nothing at runtime and needs no conditional logic in components.
+   ========================================================================== */
+
+:root {
+  /* "subtle" — the default. Short, mostly opacity, minimal travel. */
+  --motion-fast: 110ms;
+  --motion-base: 180ms;
+  --motion-slow: 260ms;
+  --motion-rise: 5px;
+  --motion-slide: 10px;
+  --motion-pop: 0.985;
+  --motion-stagger: 0ms;
+  --motion-lift: 0px;
 }
 
-body {
-  margin: 0;
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+html[data-motion='expressive'] {
+  --motion-fast: 140ms;
+  --motion-base: 300ms;
+  --motion-slow: 460ms;
+  --motion-rise: 14px;
+  --motion-slide: 26px;
+  --motion-pop: 0.94;
+  --motion-stagger: 45ms;
+  --motion-lift: -1px;
 }
 
-/* Thin, unobtrusive scrollbars for log panes / tables. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-line) transparent;
+html[data-motion='off'] {
+  --motion-fast: 1ms;
+  --motion-base: 1ms;
+  --motion-slow: 1ms;
+  --motion-rise: 0px;
+  --motion-slide: 0px;
+  --motion-pop: 1;
+  --motion-stagger: 0ms;
+  --motion-lift: 0px;
 }
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+
+/* ==========================================================================
+   Keyframes
+   --------------------------------------------------------------------------
+   Deliberately limited to `opacity`, `translate` and `scale`. Those are
+   composited on the GPU, so none of these animations trigger layout or paint.
+   `translate`/`scale` are used as independent properties (not `transform`) so
+   an entrance animation composes with a hover `transform` instead of fighting
+   it.
+   ========================================================================== */
+
+@keyframes dm-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
-*::-webkit-scrollbar-thumb {
-  background: var(--color-line);
-  border-radius: 9999px;
+
+@keyframes dm-rise {
+  from {
+    opacity: 0;
+    translate: 0 var(--motion-rise);
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes dm-pop {
+  from {
+    opacity: 0;
+    scale: var(--motion-pop);
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes dm-slide-r {
+  from {
+    opacity: 0;
+    translate: calc(var(--motion-slide) * -1) 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes dm-slide-l {
+  from {
+    opacity: 0;
+    translate: var(--motion-slide) 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* Indeterminate progress sweep. Animates background-position on a gradient,
+   which stays cheap enough to leave running for the life of a job. */
+@keyframes dm-shimmer {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes dm-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ==========================================================================
+   Base
+   --------------------------------------------------------------------------
+   In `@layer base` so Tailwind utilities still win. That matters for focus in
+   particular: components that opt out with `focus-visible:outline-none` and
+   draw their own ring need to be able to, and an unlayered global rule here
+   would give them both an outline and a ring.
+   ========================================================================== */
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto,
+      'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* On-theme focus ring for anything that doesn't define its own. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+
+  /* Native checkbox/radio tick colour follows the brand. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: var(--color-brand-600);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-brand-500) 26%, transparent);
+  }
+
+  /* Thin, unobtrusive scrollbars for log panes / tables. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-subtle) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-border-subtle);
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-default);
+  }
+}
+
+/* ==========================================================================
+   Stagger
+   --------------------------------------------------------------------------
+   Children of `.dm-stagger` get an increasing animation-delay. Done with
+   nth-child rather than inline styles or JS timers: no per-item React work, no
+   layout thrash, and it collapses to zero delay automatically when the motion
+   tier sets --motion-stagger to 0.
+
+   Deliberately left *unlayered*. The `animate-*` utilities on each child use
+   the `animation` shorthand, which resets animation-delay; unlayered rules
+   outrank every Tailwind layer, so these delays survive.
+   ========================================================================== */
+
+.dm-stagger > *:nth-child(1) {
+  animation-delay: calc(var(--motion-stagger) * 0);
+}
+.dm-stagger > *:nth-child(2) {
+  animation-delay: calc(var(--motion-stagger) * 1);
+}
+.dm-stagger > *:nth-child(3) {
+  animation-delay: calc(var(--motion-stagger) * 2);
+}
+.dm-stagger > *:nth-child(4) {
+  animation-delay: calc(var(--motion-stagger) * 3);
+}
+.dm-stagger > *:nth-child(5) {
+  animation-delay: calc(var(--motion-stagger) * 4);
+}
+.dm-stagger > *:nth-child(6) {
+  animation-delay: calc(var(--motion-stagger) * 5);
+}
+.dm-stagger > *:nth-child(7) {
+  animation-delay: calc(var(--motion-stagger) * 6);
+}
+.dm-stagger > *:nth-child(8) {
+  animation-delay: calc(var(--motion-stagger) * 7);
+}
+.dm-stagger > *:nth-child(9) {
+  animation-delay: calc(var(--motion-stagger) * 8);
+}
+.dm-stagger > *:nth-child(10) {
+  animation-delay: calc(var(--motion-stagger) * 9);
+}
+.dm-stagger > *:nth-child(11) {
+  animation-delay: calc(var(--motion-stagger) * 10);
+}
+.dm-stagger > *:nth-child(12) {
+  animation-delay: calc(var(--motion-stagger) * 11);
+}
+/* Past the 12th, hold the delay steady so long lists don't crawl in. */
+.dm-stagger > *:nth-child(n + 13) {
+  animation-delay: calc(var(--motion-stagger) * 11);
+}
+
+/* ==========================================================================
+   Animated surfaces
+   --------------------------------------------------------------------------
+   Unlayered for the same reason as the stagger rules: these own the
+   `animation` and `background-image` of the element outright.
+   ========================================================================== */
+
+/* Overlaid on the filled portion of a ProgressBar while a job runs. A moving
+   highlight reads as "work in progress" far better than the old opacity pulse,
+   which made the bar's actual colour ambiguous. */
+.dm-progress-active {
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in oklab, white 38%, transparent) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+.dm-skeleton {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-surface-hover) 20%,
+    var(--color-surface-active) 50%,
+    var(--color-surface-hover) 80%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+  border-radius: 0.5rem;
+}
+
+/* ==========================================================================
+   Component interaction states
+   --------------------------------------------------------------------------
+   Hover treatments live in CSS rather than Tailwind classes because they derive
+   from theme tokens via color-mix and scale with the motion tier. `--motion-lift`
+   is 0 on the subtle tier, so the lift is opt-in per tier without any component
+   needing to know about it.
+
+   In `@layer components` so a caller can still override with a utility class.
+   ========================================================================== */
+
+@layer components {
+  /* ── Buttons ───────────────────────────────────────────────────────────────
+     Resting colours live here, not as `bg-*` utilities on the element.
+
+     That is a cascade-layer requirement, not a style preference: Tailwind's
+     `utilities` layer outranks `components`, so a `bg-brand-600` utility on the
+     button would beat `.dm-btn-primary:hover`'s background and the hover state
+     would never paint. Declaring base and hover in the same layer fixes the
+     ordering, and a caller who passes their own `bg-*`/`hover:bg-*` utility
+     still wins — which is exactly the escape hatch we want. */
+
+  .dm-btn {
+    transition:
+      background-color var(--motion-fast) var(--ease-out-soft),
+      border-color var(--motion-fast) var(--ease-out-soft),
+      color var(--motion-fast) var(--ease-out-soft),
+      box-shadow var(--motion-fast) var(--ease-out-soft),
+      translate var(--motion-fast) var(--ease-out-soft);
+  }
+
+  .dm-btn:active:not(:disabled) {
+    translate: 0 0;
+  }
+
+  /* Primary — brand fill, lift, brand-tinted glow. */
+  .dm-btn-primary {
+    background-color: var(--color-brand-600);
+    color: var(--color-brand-fg);
+    box-shadow: var(--shadow-soft);
+  }
+  .dm-btn-primary:hover:not(:disabled) {
+    background-color: color-mix(
+      in oklab,
+      var(--color-brand-600) 88%,
+      var(--color-brand-400)
+    );
+    translate: 0 var(--motion-lift);
+    box-shadow: 0 4px 14px -3px
+      color-mix(in oklab, var(--color-brand-600) 45%, transparent);
+  }
+  .dm-btn-primary:active:not(:disabled) {
+    background-color: color-mix(
+      in oklab,
+      var(--color-brand-600) 88%,
+      var(--color-brand-800)
+    );
+    box-shadow: 0 1px 4px -1px
+      color-mix(in oklab, var(--color-brand-600) 30%, transparent);
+  }
+
+  /* Secondary / outline / ghost — step up the surface ramp. */
+  .dm-btn-secondary {
+    background-color: var(--color-surface-hover);
+    color: var(--color-ink);
+    box-shadow: var(--shadow-soft);
+  }
+  .dm-btn-secondary:hover:not(:disabled) {
+    background-color: var(--color-surface-active);
+    translate: 0 var(--motion-lift);
+  }
+  .dm-btn-secondary:active:not(:disabled) {
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-active) 88%,
+      var(--color-ink)
+    );
+    box-shadow: none;
+  }
+
+  .dm-btn-outline {
+    border: 1px solid var(--color-line);
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+  }
+  .dm-btn-outline:hover:not(:disabled) {
+    background-color: var(--color-surface-hover);
+    border-color: var(--color-border-default);
+    translate: 0 var(--motion-lift);
+    box-shadow: var(--shadow-soft);
+  }
+  .dm-btn-outline:active:not(:disabled) {
+    background-color: var(--color-surface-active);
+    box-shadow: none;
+  }
+
+  .dm-btn-ghost {
+    color: var(--color-text-secondary);
+  }
+  .dm-btn-ghost:hover:not(:disabled) {
+    background-color: var(--color-surface-hover);
+    color: var(--color-ink);
+  }
+  .dm-btn-ghost:active:not(:disabled) {
+    background-color: var(--color-surface-active);
+  }
+
+  /* Danger — primary's shape, red glow.
+     Text is `error-soft` rather than a literal white: the soft tint is always
+     the readable counterpart to the saturated tone, so this stays legible on
+     dark themes where `error` is a *light* red that white text would smear on. */
+  .dm-btn-danger {
+    background-color: var(--color-error);
+    color: var(--color-error-soft);
+    box-shadow: var(--shadow-soft);
+  }
+  .dm-btn-danger:hover:not(:disabled) {
+    background-color: color-mix(
+      in oklab,
+      var(--color-error) 88%,
+      var(--color-error-soft)
+    );
+    translate: 0 var(--motion-lift);
+    box-shadow: 0 4px 14px -3px
+      color-mix(in oklab, var(--color-error) 45%, transparent);
+  }
+  .dm-btn-danger:active:not(:disabled) {
+    background-color: color-mix(in oklab, var(--color-error) 88%, var(--color-ink));
+    box-shadow: none;
+  }
+
+  /* A ghost button that reads destructive — row-level delete actions. */
+  .dm-btn-ghost-danger {
+    color: var(--color-error);
+  }
+  .dm-btn-ghost-danger:hover:not(:disabled) {
+    background-color: var(--color-error-soft);
+    color: var(--color-error-fg);
+  }
+
+  /* ── Sidebar nav ─────────────────────────────────────────────────────── */
+
+  .dm-nav-item {
+    transition:
+      background-color var(--motion-fast) var(--ease-out-soft),
+      color var(--motion-fast) var(--ease-out-soft),
+      translate var(--motion-base) var(--ease-out-soft);
+  }
+
+  .dm-nav-item-idle:hover {
+    background-color: var(--color-surface-hover);
+    color: var(--color-ink);
+  }
+
+  .dm-nav-item-idle:active {
+    background-color: var(--color-surface-active);
+  }
+
+  /* ── Interactive surfaces ────────────────────────────────────────────── */
+
+  /* Table rows and list links. Replaces the per-row onMouseEnter/onMouseLeave
+     handlers that used to set inline styles — same effect, but it no longer
+     runs JS on every pointer move across a table. */
+  .dm-row {
+    transition:
+      background-color var(--motion-fast) var(--ease-out-soft),
+      color var(--motion-fast) var(--ease-out-soft);
+  }
+  .dm-row:hover {
+    background-color: var(--color-surface-hover);
+  }
+
+  /* Owns its resting shadow for the same layering reason as the buttons — a
+     `shadow-soft` utility on the card would outrank the hover rule below. */
+  .dm-card-interactive {
+    box-shadow: var(--shadow-soft);
+    transition:
+      border-color var(--motion-base) var(--ease-out-soft),
+      box-shadow var(--motion-base) var(--ease-out-soft),
+      translate var(--motion-base) var(--ease-out-soft);
+  }
+  .dm-card-interactive:hover {
+    border-color: var(--color-border-subtle);
+    box-shadow: var(--shadow-raised);
+    translate: 0 var(--motion-lift);
+  }
+
+  /* ── Selectable tiles (theme swatches, motion tiers) ─────────────────── */
+
+  .dm-tile {
+    transition:
+      border-color var(--motion-fast) var(--ease-out-soft),
+      background-color var(--motion-fast) var(--ease-out-soft),
+      box-shadow var(--motion-base) var(--ease-out-soft),
+      scale var(--motion-base) var(--ease-out-soft);
+  }
+  .dm-tile:hover:not(:disabled) {
+    box-shadow: var(--shadow-raised);
+  }
+  .dm-tile:active:not(:disabled) {
+    scale: 0.985;
+  }
+}
+
+/* ==========================================================================
+   Theme switching
+   --------------------------------------------------------------------------
+   Cross-fading colours on every element is expensive, so the transition only
+   exists inside the ~260ms window where a theme change is actually happening.
+   ThemeContext sets `data-theme-switching` on <html> and clears it after.
+   ========================================================================== */
+
+html[data-theme-switching] *,
+html[data-theme-switching] *::before,
+html[data-theme-switching] *::after {
+  transition:
+    background-color 220ms var(--ease-out-soft),
+    border-color 220ms var(--ease-out-soft),
+    color 220ms var(--ease-out-soft),
+    fill 220ms var(--ease-out-soft),
+    stroke 220ms var(--ease-out-soft) !important;
+  transition-delay: 0ms !important;
+}
+
+/* ==========================================================================
+   Motion opt-out
+   --------------------------------------------------------------------------
+   Both the explicit "off" tier and an OS-level reduced-motion request collapse
+   animation to an imperceptible 1ms (rather than `none`) so any code waiting on
+   animationend still gets its event. `.dm-motion-keep` exempts genuine status
+   indicators — a spinner that doesn't spin is a broken spinner, not an
+   accessibility win.
+
+   Unlayered: `!important` in an unlayered rule outranks `!important` in any
+   layer, so this is the definitive kill switch.
+   ========================================================================== */
+
+html[data-motion='off'] *:not(.dm-motion-keep),
+html[data-motion='off'] *:not(.dm-motion-keep)::before,
+html[data-motion='off'] *:not(.dm-motion-keep)::after {
+  animation-duration: 1ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  transition-delay: 0ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *:not(.dm-motion-keep),
+  *:not(.dm-motion-keep)::before,
+  *:not(.dm-motion-keep)::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }
