@@ -3,12 +3,28 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import type { Tone } from '@/constants/db'
 
+/**
+ * Each tone maps to its semantic token triple: a `-soft` background, a `-fg`
+ * foreground, and the saturated colour for the ring and dot.
+ *
+ * The old implementation hardcoded `rgb(240 253 250)` / `#047857` for success,
+ * warning and danger, so those badges kept their light-mode tint on every dark
+ * theme. Going through tokens is what makes them adapt.
+ */
 const TONES: Record<Tone, string> = {
-  neutral: 'bg-slate-100 text-slate-700 ring-slate-200',
-  info: 'bg-brand-50 text-brand-700 ring-brand-200',
-  success: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  warning: 'bg-amber-50 text-amber-700 ring-amber-200',
-  danger: 'bg-red-50 text-red-700 ring-red-200',
+  neutral: 'bg-surface-hover text-muted ring-line',
+  info: 'bg-info-soft text-info-fg ring-info/30',
+  success: 'bg-success-soft text-success-fg ring-success/30',
+  warning: 'bg-warning-soft text-warning-fg ring-warning/30',
+  danger: 'bg-error-soft text-error-fg ring-error/30',
+}
+
+const DOTS: Record<Tone, string> = {
+  neutral: 'bg-faint',
+  info: 'bg-info',
+  success: 'bg-success',
+  warning: 'bg-warning',
+  danger: 'bg-error',
 }
 
 export function Badge({
@@ -31,15 +47,7 @@ export function Badge({
       )}
     >
       {dot && (
-        <span
-          className={cn('h-1.5 w-1.5 rounded-full', {
-            'bg-slate-400': tone === 'neutral',
-            'bg-brand-500': tone === 'info',
-            'bg-emerald-500': tone === 'success',
-            'bg-amber-500': tone === 'warning',
-            'bg-red-500': tone === 'danger',
-          })}
-        />
+        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOTS[tone])} />
       )}
       {children}
     </span>

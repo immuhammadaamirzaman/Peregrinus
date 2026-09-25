@@ -13,10 +13,13 @@ export function ErrorState({
   title?: string
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-red-200 bg-red-50/50 px-6 py-12 text-center">
-      <AlertTriangle className="mb-3 h-8 w-8 text-red-500" />
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      <p className="mt-1 max-w-md text-sm text-slate-600">
+    <div
+      className="animate-rise flex flex-col items-center justify-center rounded-xl border border-error/30 bg-error-soft px-6 py-12 text-center"
+      role="alert"
+    >
+      <AlertTriangle className="mb-3 h-8 w-8 text-error" />
+      <h3 className="text-sm font-semibold text-error-fg">{title}</h3>
+      <p className="mt-1 max-w-md text-sm text-error-fg/80">
         {getApiErrorMessage(error)}
       </p>
       {onRetry && (

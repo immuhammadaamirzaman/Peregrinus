@@ -18,9 +18,24 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Reveal, Stagger } from '@/components/ui/Motion'
 import { PageLoader } from '@/components/ui/Spinner'
 import { formatRelative } from '@/lib/format'
 import { cn } from '@/lib/cn'
+
+/**
+ * Stat tones are semantic keys rather than the raw Tailwind palette strings the
+ * page used to pass in (`bg-blue-50 text-blue-600`, `bg-emerald-50 …`). Those
+ * were fixed light-mode tints that stayed pale on every dark theme.
+ */
+type StatTone = 'brand' | 'info' | 'success' | 'error'
+
+const STAT_TONES: Record<StatTone, string> = {
+  brand: 'bg-brand-50 text-brand-600',
+  info: 'bg-info-soft text-info',
+  success: 'bg-success-soft text-success',
+  error: 'bg-error-soft text-error',
+}
 
 function StatCard({
   icon: Icon,
@@ -31,17 +46,22 @@ function StatCard({
   icon: LucideIcon
   label: string
   value: number
-  tone: string
+  tone: StatTone
 }) {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-4">
-        <div className={cn('flex h-11 w-11 items-center justify-center rounded-lg', tone)}>
+        <div
+          className={cn(
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg',
+            STAT_TONES[tone],
+          )}
+        >
           <Icon className="h-5 w-5" />
         </div>
-        <div>
-          <p className="text-2xl font-semibold text-slate-900">{value}</p>
-          <p className="text-sm text-slate-500">{label}</p>
+        <div className="min-w-0">
+          <p className="text-2xl font-semibold text-ink">{value}</p>
+          <p className="truncate text-sm text-muted">{label}</p>
         </div>
       </div>
     </Card>
@@ -57,7 +77,9 @@ export function DashboardPage() {
     return <PageLoader label="Loading dashboard…" />
 
   const migs = migrations.data ?? []
-  const running = migs.filter((m) => m.status === 'running' || m.status === 'pending').length
+  const running = migs.filter(
+    (m) => m.status === 'running' || m.status === 'pending',
+  ).length
   const completed = migs.filter((m) => m.status === 'completed').length
   const failed = migs.filter((m) => m.status === 'failed').length
   const recent = migs.slice(0, 6)
@@ -79,41 +101,29 @@ export function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <Stagger className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           icon={Database}
           label="Connections"
           value={connections.data?.length ?? 0}
-          tone="bg-brand-50 text-brand-600"
+          tone="brand"
         />
-        <StatCard
-          icon={Loader2}
-          label="Active"
-          value={running}
-          tone="bg-blue-50 text-blue-600"
-        />
+        <StatCard icon={Loader2} label="Active" value={running} tone="info" />
         <StatCard
           icon={CheckCircle2}
           label="Completed"
           value={completed}
-          tone="bg-emerald-50 text-emerald-600"
+          tone="success"
         />
-        <StatCard
-          icon={XCircle}
-          label="Failed"
-          value={failed}
-          tone="bg-red-50 text-red-600"
-        />
-      </div>
+        <StatCard icon={XCircle} label="Failed" value={failed} tone="error" />
+      </Stagger>
 
-      <div className="mt-8">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-900">
-            Recent migrations
-          </h2>
+      <Reveal className="mt-8">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-ink">Recent migrations</h2>
           <Link
             to="/migrations"
-            className="text-sm font-medium text-brand-600 hover:text-brand-700"
+            className="rounded text-sm font-medium text-brand-600 transition-colors duration-(--motion-fast) hover:text-brand-700"
           >
             View all
           </Link>
@@ -127,7 +137,7 @@ export function DashboardPage() {
             action={
               <CanWrite
                 fallback={
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted">
                     Ask a teammate with write access to create one.
                   </p>
                 }
@@ -142,18 +152,18 @@ export function DashboardPage() {
             }
           />
         ) : (
-          <Card className="divide-y divide-slate-100">
+          <Card className="divide-y divide-line overflow-hidden">
             {recent.map((m) => (
+              // `.dm-row` replaces the onMouseEnter/onMouseLeave pair that wrote
+              // inline background styles on every pointer move.
               <Link
                 key={m.id}
                 to={`/migrations/${m.id}`}
-                className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-slate-50"
+                className="dm-row flex items-center justify-between gap-4 px-5 py-3.5 text-ink"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">
-                    {m.name}
-                  </p>
-                  <p className="text-xs text-slate-400">
+                  <p className="truncate text-sm font-medium text-ink">{m.name}</p>
+                  <p className="text-xs text-faint">
                     Updated {formatRelative(m.updated_at)}
                   </p>
                 </div>
@@ -162,7 +172,7 @@ export function DashboardPage() {
             ))}
           </Card>
         )}
-      </div>
+      </Reveal>
     </>
   )
 }

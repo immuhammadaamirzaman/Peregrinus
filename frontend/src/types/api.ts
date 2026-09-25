@@ -43,6 +43,15 @@ export interface RegisterRequest {
 }
 
 // ── Users ───────────────────────────────────────────────────────────
+export interface UserPreferences {
+  /** Active theme name (built-in or custom). */
+  theme?: string
+  /** Animation intensity: 'off' | 'subtle' | 'expressive'. */
+  motion?: string
+  /** Custom theme definitions keyed by theme name. */
+  customThemes?: Record<string, unknown>
+}
+
 export interface UserRead {
   id: string
   email: string
@@ -51,6 +60,7 @@ export interface UserRead {
   status: UserStatus
   last_login_at: string | null
   created_at: string
+  preferences: UserPreferences
 }
 
 // ── Connections ─────────────────────────────────────────────────────

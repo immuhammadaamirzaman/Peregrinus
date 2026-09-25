@@ -6,6 +6,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="DataMovers — move data between databases." />
     <title>DataMovers</title>
+    <script>
+      /*
+       * Paint the saved theme before the first frame.
+       *
+       * index.css ships the light theme as the :root default, so without this
+       * a dark-theme user sees a white flash for as long as the JS bundle takes
+       * to parse and mount. ThemeContext caches the resolved --color-* map under
+       * 'app-theme-vars' on every change; we just replay it here. Kept
+       * dependency-free and synchronous on purpose — it must run before paint.
+       */
+      (function () {
+        try {
+          var raw = localStorage.getItem('app-theme-vars')
+          if (raw) {
+            var cached = JSON.parse(raw)
+            var root = document.documentElement
+            if (cached && cached.vars) {
+              for (var key in cached.vars) {
+                if (key.indexOf('--color-') === 0) {
+                  root.style.setProperty(key, cached.vars[key])
+                }
+              }
+              if (cached.name) root.setAttribute('data-theme', cached.name)
+              var canvas = cached.vars['--color-canvas']
+              if (canvas && canvas.charAt(0) === '#' && canvas.length >= 7) {
+                var lum =
+                  (0.299 * parseInt(canvas.substr(1, 2), 16) +
+                    0.587 * parseInt(canvas.substr(3, 2), 16) +
+                    0.114 * parseInt(canvas.substr(5, 2), 16)) /
+                  255
+                root.style.colorScheme = lum < 0.5 ? 'dark' : 'light'
+              }
+            }
+          }
+          var motion = localStorage.getItem('app-motion')
+          document.documentElement.setAttribute(
+            'data-motion',
+            motion === 'off' || motion === 'expressive' || motion === 'subtle'
+              ? motion
+              : 'subtle',
+          )
+        } catch (e) {
+          /* Storage blocked — the CSS defaults are a valid starting point. */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

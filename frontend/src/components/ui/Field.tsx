@@ -25,19 +25,22 @@ export function Field({
   return (
     <div className={cn('space-y-1.5', className)}>
       {label && (
-        <label
-          htmlFor={htmlFor}
-          className="block text-sm font-medium text-slate-700"
-        >
+        <label htmlFor={htmlFor} className="block text-sm font-medium text-ink">
           {label}
-          {required && <span className="ml-0.5 text-red-500">*</span>}
+          {required && (
+            <span className="ml-0.5 text-error" aria-hidden>
+              *
+            </span>
+          )}
         </label>
       )}
       {children}
       {error ? (
-        <p className="text-xs text-red-600">{error}</p>
+        <p className="animate-fade text-xs text-error" role="alert">
+          {error}
+        </p>
       ) : hint ? (
-        <p className="text-xs text-slate-500">{hint}</p>
+        <p className="text-xs text-faint">{hint}</p>
       ) : null}
     </div>
   )

@@ -105,7 +105,9 @@ export function MigrationsPage() {
           description="Set up a migration to copy tables from one database to another."
           action={
             <CanWrite
-              fallback={<p className="text-sm text-slate-500">You have read-only access.</p>}
+              fallback={
+                <p className="text-sm text-muted">You have read-only access.</p>
+              }
             >
               <Link to="/migrations/new">
                 <Button>
@@ -117,7 +119,7 @@ export function MigrationsPage() {
           }
         />
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <Table>
             <Thead>
               <Tr>
@@ -140,14 +142,14 @@ export function MigrationsPage() {
                     onClick={() => navigate(`/migrations/${m.id}`)}
                   >
                     <Td>
-                      <span className="font-medium text-slate-900">{m.name}</span>
+                      <span className="font-medium text-ink">{m.name}</span>
                     </Td>
                     <Td>
-                      <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                      <span className="flex items-center gap-1.5 text-xs text-muted">
                         <span className="max-w-[110px] truncate">
                           {connName(m.source_connection_id)}
                         </span>
-                        <ArrowRight className="h-3 w-3 shrink-0" />
+                        <ArrowRight className="h-3 w-3 shrink-0 text-faint" />
                         <span className="max-w-[110px] truncate">
                           {connName(m.target_connection_id)}
                         </span>
@@ -160,6 +162,7 @@ export function MigrationsPage() {
                       <div className="flex items-center gap-2">
                         <ProgressBar
                           value={pct}
+                          label={`Progress for ${m.name}`}
                           tone={
                             m.status === 'failed'
                               ? 'danger'
@@ -170,12 +173,12 @@ export function MigrationsPage() {
                           animated={m.status === 'running'}
                           className="w-24"
                         />
-                        <span className="w-9 text-right text-xs text-slate-500">
+                        <span className="w-9 text-right text-xs text-muted">
                           {pct}%
                         </span>
                       </div>
                     </Td>
-                    <Td className="whitespace-nowrap text-xs text-slate-500">
+                    <Td className="whitespace-nowrap text-xs text-muted">
                       {formatRelative(m.updated_at)}
                     </Td>
                     <Td onClick={(e) => e.stopPropagation()} className="text-right">
@@ -183,7 +186,7 @@ export function MigrationsPage() {
                         fallback={
                           <Link
                             to={`/migrations/${m.id}`}
-                            className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                            className="text-sm font-medium text-brand-600 transition-colors duration-(--motion-fast) hover:text-brand-700"
                           >
                             View
                           </Link>
@@ -214,9 +217,9 @@ export function MigrationsPage() {
                           )}
                           <Button
                             size="sm"
-                            variant="ghost"
-                            className="text-red-600 hover:bg-red-50"
+                            variant="ghostDanger"
                             onClick={() => setDeleting(m)}
+                            aria-label={`Delete ${m.name}`}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>

@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, enum_column
@@ -32,6 +33,10 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    preferences: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
     )
 
     # ── Relationships ────────────────────────────────────────────

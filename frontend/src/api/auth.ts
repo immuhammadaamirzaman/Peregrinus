@@ -1,5 +1,5 @@
 import { api } from '@/lib/api'
-import type { RegisterRequest, Token, UserRead } from '@/types/api'
+import type { RegisterRequest, Token, UserPreferences, UserRead } from '@/types/api'
 
 export const authApi = {
   /**
@@ -34,6 +34,11 @@ export const authApi = {
 
   async me(): Promise<UserRead> {
     const { data } = await api.get<UserRead>('/auth/me')
+    return data
+  },
+
+  async updatePreferences(preferences: UserPreferences): Promise<UserRead> {
+    const { data } = await api.patch<UserRead>('/auth/me/preferences', { preferences })
     return data
   },
 }

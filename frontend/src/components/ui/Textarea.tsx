@@ -1,5 +1,6 @@
 import { forwardRef, type TextareaHTMLAttributes } from 'react'
 
+import { FIELD_BASE, FIELD_INVALID, FIELD_VALID } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
 
 export interface TextareaProps
@@ -11,12 +12,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, invalid, ...props }, ref) => (
     <textarea
       ref={ref}
+      aria-invalid={invalid || undefined}
       className={cn(
-        'block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors',
-        'placeholder:text-slate-400',
-        'focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500',
-        'disabled:cursor-not-allowed disabled:bg-slate-50',
-        invalid ? 'border-red-400' : 'border-slate-300',
+        FIELD_BASE,
+        invalid ? FIELD_INVALID : FIELD_VALID,
         className,
       )}
       {...props}
