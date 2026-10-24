@@ -1,6 +1,6 @@
 # DataMovers — Backend
 
-Move data between databases (PostgreSQL ⇄ MySQL ⇄ MongoDB ⇄ SQLite) using a
+Move data between databases (PostgreSQL ⇄ MySQL ⇄ MongoDB ⇄ SQLite ⇄ Snowflake) using a
 [Redpanda Connect](https://github.com/redpanda-data/connect) engine, driven by
 a FastAPI control plane with JWT auth, role-based access, and Celery-backed
 background jobs.
@@ -85,7 +85,17 @@ admin approval (`PATCH /api/v1/users/{id}/status` → `approved`) before they ca
 ## Phase 1 scope & limitations
 
 * **Full-dump** copy only (no incremental/CDC yet).
-* Supported engines: Postgres, MySQL, MongoDB, SQLite (MSSQL reserved for a later phase).
+* Supported engines: Postgres, MySQL, MongoDB, SQLite, Snowflake (MSSQL reserved for a later phase).
+* **Snowflake** is not addressed by `host:port`. Its *account identifier* goes
+  in `host` (e.g. `myorg-acct123`, no `.snowflakecomputing.com` suffix), `port`
+  must be empty (HTTPS/443 only), and `extra_params` carries
+  `warehouse` (**required** — the compute that runs queries), `schema`
+  (defaults to `PUBLIC`) and `role` (optional). Only password authentication is
+  supported so far; key-pair auth is not wired up yet. Identifiers are left
+  unquoted so Snowflake's upper-case folding stays consistent between
+  discovery, generated DDL, and the copy step. `on_conflict = "skip"` is
+  rejected for a Snowflake target because Snowflake's `INSERT` has no
+  ignore-duplicates form.
 * **Target tables/collections must already exist** — the engine inserts, it does not create target schema.
 * **Filters are structured, not raw SQL**: each table accepts a list of `{column, op, value}` conditions (ops: `eq, ne, gt, gte, lt, lte, like, in, nin`), rendered with bound parameters — no SQL/NoSQL injection surface.
 * **Resume is table-level**: completed tables are skipped on restart; an interrupted table is re-copied from the start. Set `options.on_conflict = "skip"` to make restarts idempotent for targets with a unique key (Postgres `ON CONFLICT DO NOTHING` / MySQL `INSERT IGNORE` / SQLite `INSERT OR IGNORE`).

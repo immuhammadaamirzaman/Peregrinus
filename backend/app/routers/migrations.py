@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.deps import get_current_user, require_writer
+from app.core.ratelimit import limiter
 from app.database import get_db
 from app.models.user import User
 from app.schemas.migration import (
@@ -68,7 +70,9 @@ async def delete_migration(
 
 
 @router.post("/{migration_id}/start", response_model=MigrationDetail)
+@limiter.limit(settings.rate_limit_sensitive)
 async def start_migration(
+    request: Request,
     migration_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_writer),

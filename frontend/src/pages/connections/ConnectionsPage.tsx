@@ -76,6 +76,14 @@ export function ConnectionsPage() {
   function target(conn: ConnectionRead): string {
     if (conn.db_type === 'sqlite') return conn.database_name
     const hostPart = conn.host ?? '—'
+    if (conn.db_type === 'snowflake') {
+      // Snowflake namespaces objects as database.schema.table, so the schema
+      // is part of what this connection actually points at.
+      const schema = conn.extra_params?.schema
+      const schemaPart =
+        typeof schema === 'string' && schema ? `.${schema}` : ''
+      return `${hostPart}/${conn.database_name}${schemaPart}`
+    }
     const portPart = conn.port ? `:${conn.port}` : ''
     return `${hostPart}${portPart}/${conn.database_name}`
   }

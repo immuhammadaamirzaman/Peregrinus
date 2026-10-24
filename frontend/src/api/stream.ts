@@ -40,7 +40,9 @@ export function openMigrationStream(
       Authorization: `Bearer ${tokenStore.getAccess() ?? ''}`,
       Accept: EventStreamContentType,
     },
-    // Don't reconnect when the tab is backgrounded; the page reopens on focus.
+    // Keep tailing while the tab is backgrounded. The library's default closes
+    // the stream when the tab is hidden, but the migration keeps running, so we
+    // hold the connection open to avoid gaps in the log.
     openWhenHidden: true,
 
     async onopen(response) {

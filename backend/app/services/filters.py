@@ -62,6 +62,12 @@ def _quote(column: str, db_type: DBType) -> str:
     col = _column(column)
     if db_type == DBType.MYSQL:
         return f"`{col}`"
+    if db_type == DBType.SNOWFLAKE:
+        # Unquoted on purpose: Snowflake folds unquoted identifiers to upper
+        # case, so `"id"` would look for a lower-case column that a normally
+        # created table does not have. ``_column`` already restricted the name
+        # to a safe alphabet, so this cannot inject.
+        return col
     return f'"{col}"'
 
 
@@ -93,10 +99,15 @@ def _render_sql(conditions: list[dict], db_type: DBType, placeholder: str) -> tu
 
 
 def render_native_sql(conditions: list[dict] | None, db_type: DBType) -> tuple[str | None, list[Any]]:
-    """For native drivers. psycopg2/pymysql use ``%s``; sqlite uses ``?``."""
+    """For native drivers. psycopg2/pymysql/snowflake use ``%s``; sqlite ``?``.
+
+    The Snowflake connector's default ``paramstyle`` is ``pyformat`` (``%s``),
+    which :func:`schema_discovery._connect_snowflake` pins explicitly.
+    """
     if not conditions:
         return None, []
-    placeholder = "%s" if db_type in (DBType.POSTGRES, DBType.MYSQL) else "?"
+    pyformat = (DBType.POSTGRES, DBType.MYSQL, DBType.SNOWFLAKE)
+    placeholder = "%s" if db_type in pyformat else "?"
     return _render_sql(conditions, db_type, placeholder)
 
 

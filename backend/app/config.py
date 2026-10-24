@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     # shared limit across multiple API workers.
     rate_limit_storage_uri: str = "memory://"
     rate_limit_auth: str = "5/minute"
+    # Limit for sensitive, resource-heavy authenticated actions: live
+    # connection tests (which dial outbound) and starting a migration.
+    rate_limit_sensitive: str = "20/minute"
 
     # ── Computed URLs / helpers ──────────────────────────────────
     @computed_field  # type: ignore[prop-decorator]

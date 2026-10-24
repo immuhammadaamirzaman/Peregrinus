@@ -12,11 +12,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.core.middleware import MaxBodySizeMiddleware
 from app.core.ratelimit import limiter, rate_limit_exceeded_handler
 from app.database import AsyncSessionLocal
 from app.routers import auth, connections, migrations, stream, users
@@ -90,16 +91,10 @@ async def _security_headers(request: Request, call_next):
     return response
 
 
-@app.middleware("http")
-async def _limit_body_size(request: Request, call_next):
-    content_length = request.headers.get("content-length")
-    if content_length and content_length.isdigit() and int(content_length) > settings.max_request_bytes:
-        return JSONResponse(
-            status_code=413,
-            content={"error": {"code": "payload_too_large", "detail": "Request body too large."}},
-        )
-    return await call_next(request)
-
+# Hard cap on request body size. Added before CORS so CORS stays the outermost
+# layer (last-added = outermost). Enforced for both Content-Length and chunked
+# requests — see app.core.middleware.
+app.add_middleware(MaxBodySizeMiddleware, max_bytes=settings.max_request_bytes)
 
 app.add_middleware(
     CORSMiddleware,

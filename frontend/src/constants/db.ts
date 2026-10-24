@@ -12,8 +12,14 @@ export interface DbTypeMeta {
   value: DBType
   label: string
   defaultPort: number | null
-  /** Whether host/port/username/password apply (false for SQLite). */
+  /** Whether host/username/password apply (false for SQLite). */
   network: boolean
+  /**
+   * Addressed by an *account identifier* over HTTPS rather than host:port
+   * (Snowflake). Implies: no port field, no SSL selector (always TLS), and
+   * dedicated warehouse / schema / role inputs instead of raw JSON extras.
+   */
+  accountBased: boolean
   /** Engines fully supported in phase 1 (test + discovery + migrate). */
   supported: boolean
   hint: string
@@ -26,6 +32,7 @@ export const DB_TYPES: DbTypeMeta[] = [
     label: 'PostgreSQL',
     defaultPort: 5432,
     network: true,
+    accountBased: false,
     supported: true,
     hint: 'Host, port, database, user & password required.',
   },
@@ -34,6 +41,7 @@ export const DB_TYPES: DbTypeMeta[] = [
     label: 'MySQL',
     defaultPort: 3306,
     network: true,
+    accountBased: false,
     supported: true,
     hint: 'Host, port, database, user & password required.',
   },
@@ -42,6 +50,7 @@ export const DB_TYPES: DbTypeMeta[] = [
     label: 'MongoDB',
     defaultPort: 27017,
     network: true,
+    accountBased: false,
     supported: true,
     hint: 'Provide host/port or a connection URI in extra params.',
   },
@@ -50,18 +59,32 @@ export const DB_TYPES: DbTypeMeta[] = [
     label: 'SQLite',
     defaultPort: null,
     network: false,
+    accountBased: false,
     supported: true,
     hint: 'Database is the file path on the API server; no host needed.',
+  },
+  {
+    value: 'snowflake',
+    label: 'Snowflake',
+    defaultPort: null,
+    network: true,
+    accountBased: true,
+    supported: true,
+    hint: 'Account identifier, database, schema & warehouse required (HTTPS, no port).',
   },
   {
     value: 'mssql',
     label: 'SQL Server',
     defaultPort: 1433,
     network: true,
+    accountBased: false,
     supported: false,
     hint: 'Reserved for a later phase — not yet supported.',
   },
 ]
+
+/** Snowflake's default schema when a connection does not name one. */
+export const DEFAULT_SNOWFLAKE_SCHEMA = 'PUBLIC'
 
 export const DB_TYPE_LABELS: Record<DBType, string> = Object.fromEntries(
   DB_TYPES.map((d) => [d.value, d.label]),

@@ -130,11 +130,6 @@ export function Sidebar({
             </NavLink>
           ))}
         </nav>
-
-        {/* Footer */}
-        <div className="border-t border-line p-4">
-          <p className="text-[11px] text-faint">Phase 1 · Full-dump copy</p>
-        </div>
       </aside>
     </>
   )

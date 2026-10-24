@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.deps import get_current_user, require_writer
+from app.core.ratelimit import limiter
 from app.database import get_db
 from app.models.user import User
 from app.schemas.connection import (
@@ -42,7 +44,9 @@ async def list_connections(
 
 
 @router.post("/test", response_model=ConnectionTestResult)
+@limiter.limit(settings.rate_limit_sensitive)
 async def test_config(
+    request: Request,
     data: ConnectionTestRequest,
     _: User = Depends(require_writer),
 ):
@@ -79,7 +83,9 @@ async def delete_connection(
 
 
 @router.post("/{conn_id}/test", response_model=ConnectionTestResult)
+@limiter.limit(settings.rate_limit_sensitive)
 async def test_existing(
+    request: Request,
     conn_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
