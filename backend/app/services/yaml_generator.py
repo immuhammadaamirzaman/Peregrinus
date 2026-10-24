@@ -8,8 +8,8 @@ environment, so secrets never touch disk. Filters are rendered with bound
 parameters / programmatic Mongo queries (see ``app.services.filters``), never
 as raw user predicates.
 
-Phase 1 = full-dump copy. Supports the four combinations of
-{Postgres, MySQL, SQLite} ⇄ MongoDB.
+Phase 1 = full-dump copy between any pair of
+{Postgres, MySQL, SQLite, Snowflake} ⇄ MongoDB.
 """
 
 from __future__ import annotations
@@ -24,10 +24,14 @@ import yaml
 from app.core import netguard
 from app.models.enums import DBType, SSLMode
 from app.services import filters
-from app.services.schema_discovery import ResolvedConnection
+from app.services.schema_discovery import ResolvedConnection, snowflake_schema
 
 SOURCE_ENV = "DM_SOURCE_DSN"
 TARGET_ENV = "DM_TARGET_DSN"
+
+# Snowflake's hard cap on expressions in a single list, which bounds how many
+# bind placeholders one multi-row INSERT may carry (rows × columns).
+SNOWFLAKE_MAX_BIND_EXPRESSIONS = 16_384
 
 _SIMPLE_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -35,6 +39,7 @@ _BENTHOS_SQL_DRIVER = {
     DBType.POSTGRES: "postgres",
     DBType.MYSQL: "mysql",
     DBType.SQLITE: "sqlite",
+    DBType.SNOWFLAKE: "snowflake",
     DBType.MSSQL: "mssql",
 }
 
@@ -79,6 +84,29 @@ def build_dsn(rc: ResolvedConnection) -> str:
         elif rc.ssl_mode != SSLMode.DISABLE:
             params.append("tls=true")
         return f"{auth}tcp({rc.host}:{rc.effective_port})/{rc.database}?{'&'.join(params)}"
+
+    if rc.db_type == DBType.SNOWFLAKE:
+        # gosnowflake DSN (used by Redpanda Connect's `snowflake` driver):
+        #   username[:password]@account_identifier/dbname/schemaname?params
+        # No scheme and no host:port — the account identifier *is* the address.
+        # Every segment is percent-encoded because the driver parses this as a
+        # URL, so an unescaped '/' or '?' in a credential would silently
+        # repoint the DSN.
+        account = netguard.validate_snowflake_account(rc.host)
+        warehouse = rc.extra_params.get("warehouse")
+        if not warehouse:
+            raise ValueError(
+                "Snowflake connections require a 'warehouse' in extra_params."
+            )
+        userinfo = f"{user}:{pw}" if rc.password else user
+        query = [f"warehouse={quote(str(warehouse), safe='')}"]
+        if role := rc.extra_params.get("role"):
+            query.append(f"role={quote(str(role), safe='')}")
+        return (
+            f"{userinfo}@{account}"
+            f"/{quote(rc.database, safe='')}/{quote(snowflake_schema(rc), safe='')}"
+            f"?{'&'.join(query)}"
+        )
 
     if rc.db_type == DBType.SQLITE:
         return netguard.safe_sqlite_path(rc.database)  # confined file path
@@ -137,6 +165,30 @@ def _validate_sql_identifier(name: str) -> str:
     if not filters.SAFE_IDENT.match(name):
         raise ValueError(f"Unsafe SQL target column identifier: {name!r}")
     return name
+
+
+def _effective_batch_size(plan: "TablePlan", column_count: int) -> int:
+    """Batch rows per INSERT, capped to the target's bind-parameter limit.
+
+    The engine turns a batch of N rows into one multi-row
+    ``INSERT … VALUES (?,…),(?,…)`` statement, so the placeholder count is
+    ``rows × columns``. Snowflake rejects more than 16,384 expressions in a
+    list, so the default batch of 1,000 rows breaks on any table wider than 16
+    columns with "maximum number of expressions in a list exceeded". Clamping
+    the row count keeps wide tables working instead of failing mid-migration.
+    """
+    if plan.target_db_type != DBType.SNOWFLAKE or column_count <= 0:
+        return plan.batch_size
+    if column_count > SNOWFLAKE_MAX_BIND_EXPRESSIONS:
+        # Not even one row fits, so no batch size can make this work. Say so
+        # here rather than emitting a config that dies inside the engine.
+        raise ValueError(
+            f"Cannot copy {column_count} columns into Snowflake in one "
+            f"statement: a single row already exceeds Snowflake's limit of "
+            f"{SNOWFLAKE_MAX_BIND_EXPRESSIONS} expressions per list. Select "
+            "fewer columns for this table."
+        )
+    return max(1, min(plan.batch_size, SNOWFLAKE_MAX_BIND_EXPRESSIONS // column_count))
 
 
 # ── Component builders ───────────────────────────────────────────
@@ -212,7 +264,10 @@ def _build_output(plan: TablePlan) -> dict:
         # than batch_size) never reaches the count threshold and is never
         # flushed, so the engine hangs forever having written nothing. The
         # timer guarantees pending rows are flushed.
-        "batching": {"count": plan.batch_size, "period": "1s"},
+        "batching": {
+            "count": _effective_batch_size(plan, len(target_cols)),
+            "period": "1s",
+        },
     }
     if plan.on_conflict == "skip":
         if plan.target_db_type == DBType.POSTGRES:
@@ -221,6 +276,16 @@ def _build_output(plan: TablePlan) -> dict:
             insert["options"] = ["IGNORE"]
         elif plan.target_db_type == DBType.SQLITE:
             insert["options"] = ["OR IGNORE"]
+        elif plan.target_db_type == DBType.SNOWFLAKE:
+            # Snowflake's INSERT has no ignore-on-conflict form (it does not
+            # even enforce unique constraints), so "skip" cannot be honoured.
+            # Silently inserting duplicates would be worse than refusing.
+            raise ValueError(
+                "on_conflict='skip' is not supported for a Snowflake target: "
+                "Snowflake INSERT has no ignore-duplicates option. Use "
+                "on_conflict='error' and truncate or de-duplicate the target "
+                "table between runs."
+            )
     return {"sql_insert": insert}
 
 

@@ -111,6 +111,35 @@ _MYSQL: dict[str, Canonical] = {
     "longblob": Canonical.BINARY, "binary": Canonical.BINARY, "varbinary": Canonical.BINARY,
 }
 
+# Snowflake reports a small set of canonical type names via INFORMATION_SCHEMA
+# (there is no separate INT/BIGINT storage — all integers are NUMBER(38,0),
+# and all floats are 64-bit), so the mapping is short.
+_SNOWFLAKE: dict[str, Canonical] = {
+    # Every integer alias is NUMBER(38,0) underneath; information_schema
+    # reports "NUMBER". Without reading numeric_scale we cannot tell an
+    # integer from a decimal, so NUMBER maps to the wider exact type.
+    "number": Canonical.NUMERIC, "decimal": Canonical.NUMERIC,
+    "numeric": Canonical.NUMERIC,
+    "int": Canonical.BIGINT, "integer": Canonical.BIGINT,
+    "bigint": Canonical.BIGINT, "smallint": Canonical.SMALLINT,
+    "tinyint": Canonical.SMALLINT, "byteint": Canonical.SMALLINT,
+    "float": Canonical.REAL, "float4": Canonical.REAL, "float8": Canonical.REAL,
+    "double": Canonical.REAL, "double precision": Canonical.REAL,
+    "real": Canonical.REAL,
+    "boolean": Canonical.BOOLEAN,
+    "varchar": Canonical.TEXT, "char": Canonical.TEXT,
+    "character": Canonical.TEXT, "string": Canonical.TEXT, "text": Canonical.TEXT,
+    # Semi-structured columns come back as JSON text, so JSON is the faithful
+    # canonical type for all three.
+    "variant": Canonical.JSON, "object": Canonical.JSON, "array": Canonical.JSON,
+    "date": Canonical.DATE,
+    "time": Canonical.TIME,
+    "datetime": Canonical.TIMESTAMP,
+    "timestamp": Canonical.TIMESTAMP, "timestamp_ntz": Canonical.TIMESTAMP,
+    "timestamp_ltz": Canonical.TIMESTAMPTZ, "timestamp_tz": Canonical.TIMESTAMPTZ,
+    "binary": Canonical.BINARY, "varbinary": Canonical.BINARY,
+}
+
 # MongoDB field types are sampled python type names (see schema_discovery).
 _MONGO: dict[str, Canonical] = {
     "str": Canonical.TEXT,
@@ -166,6 +195,8 @@ def to_canonical(db_type: DBType, native: str) -> Canonical:
         return _POSTGRES.get(n, _FALLBACK)
     if db_type == DBType.MYSQL:
         return _MYSQL.get(n, _FALLBACK)
+    if db_type == DBType.SNOWFLAKE:
+        return _SNOWFLAKE.get(n, _FALLBACK)
     if db_type == DBType.MONGODB:
         return _MONGO.get(n, _FALLBACK)
     return _FALLBACK
@@ -211,10 +242,36 @@ def _sqlite_type(c: Canonical, is_pk: bool) -> str:
     }[c]
 
 
+def _snowflake_type(c: Canonical, is_pk: bool) -> str:
+    return {
+        # VARCHAR with no length is Snowflake's full 16 MB maximum, so there is
+        # no reason to bound it — and unlike MySQL there is no index key-length
+        # limit that would force a shorter type for a PK column.
+        Canonical.TEXT: "VARCHAR", Canonical.VARCHAR: "VARCHAR",
+        Canonical.INTEGER: "INTEGER", Canonical.BIGINT: "BIGINT",
+        Canonical.SMALLINT: "SMALLINT",
+        Canonical.BOOLEAN: "BOOLEAN", Canonical.REAL: "FLOAT",
+        Canonical.NUMERIC: "NUMBER(38,10)",
+        Canonical.UUID: "VARCHAR(36)",
+        # NOT VARIANT, deliberately. Snowflake refuses to bind a string into a
+        # VARIANT column ("expecting VARIANT but got VARCHAR") — it requires
+        # PARSE_JSON(?) around the placeholder, and the migration engine's
+        # generated INSERT has no way to wrap individual columns. A VARIANT
+        # column here would create a table the copy step cannot populate. The
+        # JSON text lands in VARCHAR; cast it with PARSE_JSON afterwards if you
+        # need semi-structured querying.
+        Canonical.JSON: "VARCHAR",
+        Canonical.TIMESTAMP: "TIMESTAMP_NTZ", Canonical.TIMESTAMPTZ: "TIMESTAMP_TZ",
+        Canonical.DATE: "DATE", Canonical.TIME: "TIME",
+        Canonical.BINARY: "BINARY",
+    }[c]
+
+
 _RENDER = {
     DBType.POSTGRES: _pg_type,
     DBType.MYSQL: _mysql_type,
     DBType.SQLITE: _sqlite_type,
+    DBType.SNOWFLAKE: _snowflake_type,
 }
 
 
@@ -227,7 +284,14 @@ def _validate_ident(name: str) -> str:
 
 def _quote(name: str, db_type: DBType) -> str:
     ident = _validate_ident(name)
-    return f"`{ident}`" if db_type == DBType.MYSQL else f'"{ident}"'
+    if db_type == DBType.MYSQL:
+        return f"`{ident}`"
+    if db_type == DBType.SNOWFLAKE:
+        # Unquoted so Snowflake folds the name to upper case — matching how the
+        # migration engine's INSERT (also unquoted) will reference it. Quoting
+        # here would create a case-sensitive table the copy step cannot find.
+        return ident
+    return f'"{ident}"'
 
 
 # ── Public API ───────────────────────────────────────────────────

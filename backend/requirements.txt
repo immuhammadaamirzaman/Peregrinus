@@ -13,6 +13,7 @@ psycopg2-binary>=2.9            # sync Postgres driver (Celery, discovery)
 # ── Source / target DB drivers (testing + schema discovery) ──────
 PyMySQL>=1.1                     # MySQL
 pymongo>=4.7                     # MongoDB
+snowflake-connector-python>=3.12,<6.0   # Snowflake (HTTPS, no host:port)
 # pyodbc>=5.1                    # MSSQL — needs system ODBC driver (phase 2)
 
 # ── Config / validation ──────────────────────────────────────────

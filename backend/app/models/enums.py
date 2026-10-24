@@ -34,13 +34,31 @@ class DBType(StrEnum):
     MYSQL = "mysql"
     MONGODB = "mongodb"
     SQLITE = "sqlite"
+    SNOWFLAKE = "snowflake"
     MSSQL = "mssql"     # reserved — discovery/engine support lands in phase 2
 
 
 # Engines with full phase-1 support (test + discovery + migrate).
 SUPPORTED_DB_TYPES: frozenset[DBType] = frozenset(
-    {DBType.POSTGRES, DBType.MYSQL, DBType.MONGODB, DBType.SQLITE}
+    {
+        DBType.POSTGRES,
+        DBType.MYSQL,
+        DBType.MONGODB,
+        DBType.SQLITE,
+        DBType.SNOWFLAKE,
+    }
 )
+
+# Engines that do not use a host:port socket. Snowflake is addressed by an
+# *account identifier* (``host``) over HTTPS/443, so a user-supplied port is
+# meaningless; SQLite is a local file path in ``database_name``.
+PORTLESS_DB_TYPES: frozenset[DBType] = frozenset(
+    {DBType.SQLITE, DBType.SNOWFLAKE}
+)
+
+# Snowflake addresses tables as ``database.schema.table``; this is the schema
+# used when a connection does not name one (matches Snowflake's own default).
+DEFAULT_SNOWFLAKE_SCHEMA = "PUBLIC"
 
 
 class SSLMode(StrEnum):

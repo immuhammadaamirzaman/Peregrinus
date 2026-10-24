@@ -1,12 +1,12 @@
 # DataMovers
 
-A full-stack database migration platform. Move data between **PostgreSQL, MySQL, MongoDB, and SQLite** through a clean web UI — with role-based access control, encrypted credential storage, background job execution, and live progress streaming.
+A full-stack database migration platform. Move data between **PostgreSQL, MySQL, MongoDB, SQLite, and Snowflake** through a clean web UI — with role-based access control, encrypted credential storage, background job execution, and live progress streaming.
 
 ---
 
 ## Features
 
-- **Multi-engine support** — migrate between any combination of PostgreSQL, MySQL, MongoDB, and SQLite
+- **Multi-engine support** — migrate between any combination of PostgreSQL, MySQL, MongoDB, SQLite, and Snowflake
 - **Encrypted credentials** — database passwords are Fernet-encrypted at rest; never exposed by the API
 - **Background jobs** — migrations run via Celery workers; the UI stays responsive with live SSE log streaming
 - **Role-based access** — Admin / User / Guest roles with approval-gated sign-ups

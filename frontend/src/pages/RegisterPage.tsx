@@ -19,7 +19,7 @@ const schema = z
     email: z.string().min(1, 'Email is required').email('Enter a valid email'),
     password: z
       .string()
-      .min(8, 'Password must be at least 8 characters')
+      .min(12, 'Password must be at least 12 characters')
       .max(128),
     confirm: z.string().min(1, 'Please confirm your password'),
   })
@@ -115,7 +115,7 @@ export function RegisterPage() {
           label="Password"
           htmlFor="password"
           error={errors.password?.message}
-          hint="At least 8 characters."
+          hint="At least 12 characters."
           required
         >
           <Input

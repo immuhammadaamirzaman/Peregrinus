@@ -10,7 +10,12 @@ import {
   useCreateConnection,
   useUpdateConnection,
 } from '@/hooks/useConnections'
-import { DB_TYPES, SSL_MODES, dbMeta } from '@/constants/db'
+import {
+  DB_TYPES,
+  DEFAULT_SNOWFLAKE_SCHEMA,
+  SSL_MODES,
+  dbMeta,
+} from '@/constants/db'
 import { getApiErrorMessage } from '@/lib/api'
 import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
@@ -30,11 +35,29 @@ import type {
 // Only phase-1 engines are selectable.
 const SELECTABLE = DB_TYPES.filter((d) => d.supported)
 
+// Snowflake addresses objects as database.schema.table and runs every query on
+// a named virtual warehouse, so these three travel in extra_params. Validated
+// here with the same alphabet the backend enforces, since they are interpolated
+// into SQL as unquoted identifiers rather than bound as parameters.
+const SNOWFLAKE_IDENT = /^[A-Za-z_][A-Za-z0-9_$]*$/
+const identField = (label: string) =>
+  z
+    .string()
+    .max(255)
+    .optional()
+    .refine(
+      (v) => !v || SNOWFLAKE_IDENT.test(v),
+      `${label} must be a plain unquoted identifier`,
+    )
+
 const schema = z
   .object({
     name: z.string().min(1, 'Name is required').max(120),
-    db_type: z.enum(['postgres', 'mysql', 'mongodb', 'sqlite']),
+    db_type: z.enum(['postgres', 'mysql', 'mongodb', 'sqlite', 'snowflake']),
     host: z.string().max(255).optional(),
+    warehouse: identField('Warehouse'),
+    sf_schema: identField('Schema'),
+    role: identField('Role'),
     port: z
       .string()
       .optional()
@@ -79,6 +102,31 @@ const schema = z
         })
       }
     }
+    if (val.db_type === 'snowflake') {
+      if (!val.host) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Account identifier is required (e.g. myorg-acct123)',
+          path: ['host'],
+        })
+      }
+      if (!val.username) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Username is required for Snowflake',
+          path: ['username'],
+        })
+      }
+      // Without a warehouse the login still succeeds, then every query fails
+      // with "No active warehouse selected" — so require it up front.
+      if (!val.warehouse) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Warehouse is required — it runs the queries',
+          path: ['warehouse'],
+        })
+      }
+    }
   })
 
 type FormValues = z.infer<typeof schema>
@@ -92,17 +140,34 @@ function safeJson(text?: string): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Snowflake's dedicated inputs are the complete set of extras the backend
+ * allows for it, so they replace the free-form JSON box rather than merging
+ * with it. Blank values are omitted so the backend applies its own defaults.
+ */
+function buildExtraParams(v: FormValues): Record<string, unknown> {
+  if (dbMeta(v.db_type).accountBased) {
+    const params: Record<string, unknown> = {}
+    if (v.warehouse) params.warehouse = v.warehouse
+    if (v.sf_schema) params.schema = v.sf_schema
+    if (v.role) params.role = v.role
+    return params
+  }
+  return safeJson(v.extra_params) ?? {}
+}
+
 function buildConnFields(v: FormValues) {
   const meta = dbMeta(v.db_type)
-  const params = safeJson(v.extra_params) ?? {}
   return {
     db_type: v.db_type as DBType,
     host: meta.network ? v.host || null : null,
-    port: meta.network && v.port ? Number(v.port) : null,
+    // Snowflake is HTTPS on 443 and derives its endpoint from the account
+    // identifier; the backend rejects any other port outright.
+    port: meta.network && !meta.accountBased && v.port ? Number(v.port) : null,
     database_name: v.database_name,
     username: meta.network ? v.username || null : null,
     ssl_mode: v.ssl_mode as SSLMode,
-    extra_params: params,
+    extra_params: buildExtraParams(v),
   }
 }
 
@@ -140,6 +205,9 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
       password: '',
       ssl_mode: 'disable',
       extra_params: '',
+      warehouse: '',
+      sf_schema: '',
+      role: '',
     },
   })
 
@@ -148,6 +216,8 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
     if (!open) return
     setTestResult(null)
     if (connection) {
+      const params = connection.extra_params ?? {}
+      const accountBased = dbMeta(connection.db_type).accountBased
       reset({
         name: connection.name,
         db_type: connection.db_type as FormValues['db_type'],
@@ -157,10 +227,15 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
         username: connection.username ?? '',
         password: '',
         ssl_mode: connection.ssl_mode,
+        // For account-based engines these extras are shown as real inputs, so
+        // keep them out of the JSON box to avoid two editors for one value.
         extra_params:
-          connection.extra_params && Object.keys(connection.extra_params).length
-            ? JSON.stringify(connection.extra_params, null, 2)
+          !accountBased && Object.keys(params).length
+            ? JSON.stringify(params, null, 2)
             : '',
+        warehouse: typeof params.warehouse === 'string' ? params.warehouse : '',
+        sf_schema: typeof params.schema === 'string' ? params.schema : '',
+        role: typeof params.role === 'string' ? params.role : '',
       })
     } else {
       reset({
@@ -173,6 +248,9 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
         password: '',
         ssl_mode: 'disable',
         extra_params: '',
+        warehouse: '',
+        sf_schema: '',
+        role: '',
       })
     }
   }, [open, connection, reset])
@@ -195,9 +273,13 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
   async function handleTest() {
     setTestResult(null)
     const values = getValues()
-    // Light client check before hitting the network.
+    // Light client checks before hitting the network.
     if (!values.database_name) {
       toast.error('Enter a database name before testing.')
+      return
+    }
+    if (meta.accountBased && !values.warehouse) {
+      toast.error('Enter a warehouse before testing.')
       return
     }
     setTesting(true)
@@ -221,11 +303,14 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
         await update.mutateAsync({
           name: values.name,
           host: meta.network ? values.host || null : null,
-          port: meta.network && values.port ? Number(values.port) : null,
+          port:
+            meta.network && !meta.accountBased && values.port
+              ? Number(values.port)
+              : null,
           database_name: values.database_name,
           username: meta.network ? values.username || null : null,
           ssl_mode: values.ssl_mode as SSLMode,
-          extra_params: safeJson(values.extra_params) ?? {},
+          extra_params: buildExtraParams(values),
           ...(values.password ? { password: values.password } : {}),
         })
         toast.success('Connection updated.')
@@ -296,27 +381,38 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
         {meta.network && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field
-              label="Host"
+              label={meta.accountBased ? 'Account identifier' : 'Host'}
               htmlFor="host"
               error={errors.host?.message}
-              className="sm:col-span-2"
+              className={meta.accountBased ? 'sm:col-span-3' : 'sm:col-span-2'}
+              hint={
+                meta.accountBased
+                  ? 'Organisation and account name, without the .snowflakecomputing.com suffix.'
+                  : undefined
+              }
+              required={meta.accountBased}
             >
               <Input
                 id="host"
-                placeholder="db.example.com"
+                placeholder={
+                  meta.accountBased ? 'myorg-acct123' : 'db.example.com'
+                }
                 invalid={!!errors.host}
                 {...register('host')}
               />
             </Field>
-            <Field label="Port" htmlFor="port" error={errors.port?.message}>
-              <Input
-                id="port"
-                inputMode="numeric"
-                placeholder={meta.defaultPort ? String(meta.defaultPort) : '—'}
-                invalid={!!errors.port}
-                {...register('port')}
-              />
-            </Field>
+            {/* Snowflake is HTTPS-only on 443, so no port field. */}
+            {!meta.accountBased && (
+              <Field label="Port" htmlFor="port" error={errors.port?.message}>
+                <Input
+                  id="port"
+                  inputMode="numeric"
+                  placeholder={meta.defaultPort ? String(meta.defaultPort) : '—'}
+                  invalid={!!errors.port}
+                  {...register('port')}
+                />
+              </Field>
+            )}
           </div>
         )}
 
@@ -327,26 +423,85 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
           hint={
             meta.network
               ? undefined
-              : 'Absolute path to the SQLite file on the API server.'
+              : "SQLite file path relative to the server's configured SQLite directory (absolute paths are rejected)."
           }
           required
         >
           <Input
             id="database_name"
-            placeholder={meta.network ? 'app_production' : '/data/app.db'}
+            placeholder={
+              meta.accountBased
+                ? 'RAW_DATA'
+                : meta.network
+                  ? 'app_production'
+                  : 'app.db'
+            }
             invalid={!!errors.database_name}
             {...register('database_name')}
           />
         </Field>
 
+        {/* Snowflake addresses tables as database.schema.table and executes
+            every query on a named virtual warehouse. */}
+        {meta.accountBased && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field
+              label="Warehouse"
+              htmlFor="warehouse"
+              error={errors.warehouse?.message}
+              hint="Compute that runs the queries."
+              required
+            >
+              <Input
+                id="warehouse"
+                placeholder="COMPUTE_WH"
+                invalid={!!errors.warehouse}
+                {...register('warehouse')}
+              />
+            </Field>
+            <Field
+              label="Schema"
+              htmlFor="sf_schema"
+              error={errors.sf_schema?.message}
+              hint={`Defaults to ${DEFAULT_SNOWFLAKE_SCHEMA}.`}
+            >
+              <Input
+                id="sf_schema"
+                placeholder={DEFAULT_SNOWFLAKE_SCHEMA}
+                invalid={!!errors.sf_schema}
+                {...register('sf_schema')}
+              />
+            </Field>
+            <Field
+              label="Role"
+              htmlFor="role"
+              error={errors.role?.message}
+              hint="Optional — uses your default role."
+            >
+              <Input
+                id="role"
+                placeholder="ANALYST_ROLE"
+                invalid={!!errors.role}
+                {...register('role')}
+              />
+            </Field>
+          </div>
+        )}
+
         {meta.network && (
           <>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Username" htmlFor="username" error={errors.username?.message}>
+              <Field
+                label="Username"
+                htmlFor="username"
+                error={errors.username?.message}
+                required={meta.accountBased}
+              >
                 <Input
                   id="username"
                   autoComplete="off"
-                  placeholder="db_user"
+                  placeholder={meta.accountBased ? 'data_engineer' : 'db_user'}
+                  invalid={!!errors.username}
                   {...register('username')}
                 />
               </Field>
@@ -372,40 +527,47 @@ export function ConnectionFormModal({ open, onClose, connection }: Props) {
               </Field>
             </div>
 
-            <Field label="SSL mode" htmlFor="ssl_mode">
-              <Select id="ssl_mode" {...register('ssl_mode')}>
-                {SSL_MODES.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            {/* Snowflake always connects over TLS, so there is nothing to choose. */}
+            {!meta.accountBased && (
+              <Field label="SSL mode" htmlFor="ssl_mode">
+                <Select id="ssl_mode" {...register('ssl_mode')}>
+                  {SSL_MODES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
           </>
         )}
 
-        <details className="rounded-lg border border-line bg-surface-secondary px-3 py-2">
-          <summary className="cursor-pointer text-sm font-medium text-muted transition-colors duration-(--motion-fast) hover:text-ink">
-            Advanced parameters (JSON)
-          </summary>
-          <div className="pt-3">
-            <Field
-              htmlFor="extra_params"
-              error={errors.extra_params?.message}
-              hint='e.g. {"uri": "mongodb+srv://…"} or {"sslrootcert": "/path/ca.pem"}'
-            >
-              <Textarea
-                id="extra_params"
-                rows={3}
-                spellCheck={false}
-                className="font-mono text-xs"
-                placeholder="{}"
-                invalid={!!errors.extra_params}
-                {...register('extra_params')}
-              />
-            </Field>
-          </div>
-        </details>
+        {/* Account-based engines surface all their extras as real inputs
+            above, so the raw JSON editor would have nothing left to hold. */}
+        {!meta.accountBased && (
+          <details className="rounded-lg border border-line bg-surface-secondary px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium text-muted transition-colors duration-(--motion-fast) hover:text-ink">
+              Advanced parameters (JSON)
+            </summary>
+            <div className="pt-3">
+              <Field
+                htmlFor="extra_params"
+                error={errors.extra_params?.message}
+                hint='e.g. {"uri": "mongodb+srv://…"} or {"sslrootcert": "/path/ca.pem"}'
+              >
+                <Textarea
+                  id="extra_params"
+                  rows={3}
+                  spellCheck={false}
+                  className="font-mono text-xs"
+                  placeholder="{}"
+                  invalid={!!errors.extra_params}
+                  {...register('extra_params')}
+                />
+              </Field>
+            </div>
+          </details>
+        )}
 
         {testResult && (
           <Alert

@@ -18,7 +18,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import get_cipher
-from app.core.exceptions import ConflictError, ConnectionTestError, NotFoundError, PermissionDeniedError
+from app.core.exceptions import (
+    ConflictError,
+    ConnectionTestError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from app.models.connection import Connection
 from app.models.enums import Role
 from app.models.migration import Migration
@@ -31,6 +37,7 @@ from app.schemas.connection import (
     ConnectionUpdate,
     TableColumns,
     TableList,
+    validate_extra_params,
 )
 from app.services import schema_discovery
 from app.services.schema_discovery import ResolvedConnection
@@ -145,6 +152,15 @@ async def update_connection(
 ) -> Connection:
     conn = await get_writable(db, conn_id, user)
     updates = data.model_dump(exclude_unset=True)
+
+    # ConnectionUpdate cannot carry db_type, so the engine-specific
+    # extra_params policy is applied here against the stored engine. Without
+    # this a PATCH would be a hole in rules the create path enforces.
+    if updates.get("extra_params") is not None:
+        try:
+            validate_extra_params(conn.db_type, updates["extra_params"])
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
 
     if "password" in updates:
         raw = updates.pop("password")

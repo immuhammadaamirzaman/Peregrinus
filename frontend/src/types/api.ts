@@ -7,7 +7,13 @@
 // ── Enums (app/models/enums.py) ─────────────────────────────────────
 export type Role = 'admin' | 'user' | 'guest'
 export type UserStatus = 'pending' | 'approved' | 'rejected' | 'disabled'
-export type DBType = 'postgres' | 'mysql' | 'mongodb' | 'sqlite' | 'mssql'
+export type DBType =
+  | 'postgres'
+  | 'mysql'
+  | 'mongodb'
+  | 'sqlite'
+  | 'snowflake'
+  | 'mssql'
 export type SSLMode = 'disable' | 'require' | 'verify-ca' | 'verify-full'
 export type MigrationStatus =
   | 'draft'

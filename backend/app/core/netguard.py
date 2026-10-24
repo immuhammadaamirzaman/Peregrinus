@@ -14,17 +14,31 @@ DSN) — enforces the same policy.
 * :func:`safe_cert_path` — confines a TLS cert file path to a base directory.
 * :func:`validate_mongo_uri` — validates a Mongo connection URI's scheme and
   resolves/validates its hosts.
+* :func:`validate_snowflake_account` — normalises a Snowflake account
+  identifier and validates the hostname it expands to.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import re
 import socket
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from app.config import settings
 from app.core.exceptions import ConnectionTestError
+
+# Snowflake appends this domain to the account identifier itself; the driver
+# is given the bare identifier, so we reattach it to resolve/validate the
+# real destination.
+SNOWFLAKE_DOMAIN = ".snowflakecomputing.com"
+
+# Account identifiers are ``<orgname>-<acctname>`` (preferred) or a legacy
+# locator optionally suffixed with a region and/or ``.privatelink`` — e.g.
+# ``myorg-acct123``, ``xy12345.eu-central-1``, ``xy12345.us-east-1.privatelink``.
+# Anything outside this alphabet cannot smuggle a different host or a URL.
+_SNOWFLAKE_ACCOUNT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$")
 
 
 def _check_ip(ip_str: str, *, allow_private: bool) -> None:
@@ -124,8 +138,49 @@ def validate_mongo_uri(uri: str) -> None:
             "Only 'mongodb://' connection URIs are permitted "
             "('mongodb+srv://' is not allowed)."
         )
-    hosts = parts.netloc.rsplit("@", 1)[-1]  # strip user:pass@
+    if parts.username or parts.password:
+        # Defence in depth: the schema layer rejects credentialed URIs on input,
+        # but a legacy/stored URI must never be dialled with an embedded secret.
+        raise ConnectionTestError(
+            "Credentials must not be embedded in the Mongo URI; set the "
+            "connection's username and password fields instead."
+        )
+    hosts = parts.netloc.rsplit("@", 1)[-1]  # strip user:pass@ if present
     for hostport in hosts.split(","):
         host = hostport.rsplit(":", 1)[0].strip("[]")  # drop port, IPv6 brackets
         if host:
             validate_outbound_host(host)
+
+
+def validate_snowflake_account(account: str | None) -> str:
+    """Normalise a Snowflake account identifier and validate its destination.
+
+    Snowflake is not addressed by ``host:port``: the driver takes an *account
+    identifier* and appends ``.snowflakecomputing.com`` itself. That bare
+    identifier is not a DNS name, so passing it to
+    :func:`validate_outbound_host` would always fail to resolve. Here we strip
+    an optionally-supplied domain suffix, check the identifier against a strict
+    alphabet, then resolve and validate the hostname it actually expands to —
+    keeping Snowflake under the same anti-SSRF policy as every other engine.
+
+    Returns the bare account identifier to hand to the driver.
+
+    Note: ``*.privatelink`` accounts resolve to RFC1918 addresses and are
+    therefore rejected unless the deployment sets ``ALLOW_PRIVATE_HOSTS``.
+    """
+    if not account or not account.strip():
+        raise ConnectionTestError("A Snowflake account identifier is required.")
+
+    acct = account.strip().strip(".")
+    # Accept a pasted full hostname (…​.snowflakecomputing.com) or URL host.
+    if acct.lower().endswith(SNOWFLAKE_DOMAIN):
+        acct = acct[: -len(SNOWFLAKE_DOMAIN)]
+
+    if not _SNOWFLAKE_ACCOUNT_RE.match(acct):
+        raise ConnectionTestError(
+            "Invalid Snowflake account identifier. Use the form "
+            "'<orgname>-<account_name>' (for example 'myorg-acct123')."
+        )
+
+    validate_outbound_host(f"{acct}{SNOWFLAKE_DOMAIN}")
+    return acct

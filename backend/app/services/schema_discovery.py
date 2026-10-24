@@ -17,13 +17,19 @@ from typing import Any
 
 from app.core import netguard
 from app.core.exceptions import ConnectionTestError
-from app.models.enums import DBType, SSLMode
+from app.models.enums import DEFAULT_SNOWFLAKE_SCHEMA, DBType, SSLMode
 from app.schemas.connection import ColumnInfo
 
 # Fail fast on unreachable hosts instead of hanging the request/worker.
 CONNECT_TIMEOUT_SECONDS = 5
+# Snowflake logs in over HTTPS against a cloud endpoint and may have to resume
+# a suspended warehouse, so the 5s socket budget used for a TCP database
+# handshake would spuriously time out valid accounts.
+SNOWFLAKE_LOGIN_TIMEOUT_SECONDS = 20
 MONGO_SAMPLE_SIZE = 100  # documents sampled to infer collection fields
 
+# Snowflake is deliberately absent: it is reached over HTTPS/443 at an endpoint
+# the driver derives from the account identifier, never a user-chosen port.
 DEFAULT_PORTS: dict[DBType, int] = {
     DBType.POSTGRES: 5432,
     DBType.MYSQL: 3306,
@@ -116,6 +122,56 @@ def _connect_sqlite(rc: ResolvedConnection):
     )
 
 
+def snowflake_schema(rc: ResolvedConnection) -> str:
+    """The Snowflake schema this connection addresses (validated identifier)."""
+    return _safe_identifier(
+        rc.extra_params.get("schema") or DEFAULT_SNOWFLAKE_SCHEMA
+    )
+
+
+def _snowflake_table(rc: ResolvedConnection, table: str) -> str:
+    """``SCHEMA.TABLE`` for a Snowflake statement.
+
+    Both parts are validated identifiers and deliberately left unquoted so
+    Snowflake applies its usual upper-case folding.
+    """
+    return f"{snowflake_schema(rc)}.{_safe_identifier(table)}"
+
+
+def _connect_snowflake(rc: ResolvedConnection):
+    import snowflake.connector
+
+    # ``host`` carries the account identifier, not a DNS name; this normalises
+    # it and validates the hostname it expands to (anti-SSRF).
+    account = netguard.validate_snowflake_account(rc.host)
+
+    warehouse = rc.extra_params.get("warehouse")
+    if not warehouse:
+        raise ConnectionTestError(
+            "This Snowflake connection has no warehouse configured. Set "
+            "'warehouse' in its advanced parameters."
+        )
+
+    kwargs: dict[str, Any] = {
+        "account": account,
+        "user": rc.username,
+        "password": rc.password or "",
+        "database": rc.database,
+        "schema": snowflake_schema(rc),
+        "warehouse": _safe_identifier(warehouse),
+        "login_timeout": SNOWFLAKE_LOGIN_TIMEOUT_SECONDS,
+        # Keep the default client-side 'pyformat' (%s) paramstyle so bound
+        # parameters match render_native_sql below.
+        "paramstyle": "pyformat",
+        # Don't leave a session heartbeat thread behind in a request worker.
+        "client_session_keep_alive": False,
+        "application": "DataMovers",
+    }
+    if role := rc.extra_params.get("role"):
+        kwargs["role"] = _safe_identifier(role)
+    return snowflake.connector.connect(**kwargs)
+
+
 def _mongo_client(rc: ResolvedConnection):
     from pymongo import MongoClient
 
@@ -155,11 +211,19 @@ def test_connection(rc: ResolvedConnection) -> tuple[str | None, float]:
             with closing(_connect_sqlite(rc)) as conn, closing(conn.cursor()) as cur:
                 cur.execute("SELECT sqlite_version()")
                 version = cur.fetchone()[0]
-        else:
+        elif rc.db_type == DBType.SNOWFLAKE:
+            with closing(_connect_snowflake(rc)) as conn, closing(conn.cursor()) as cur:
+                cur.execute("SELECT CURRENT_VERSION()")
+                version = cur.fetchone()[0]
+        elif rc.db_type in (DBType.POSTGRES, DBType.MYSQL):
             connect = _connect_postgres if rc.db_type == DBType.POSTGRES else _connect_mysql
             with closing(connect(rc)) as conn, closing(conn.cursor()) as cur:
                 cur.execute("SELECT version()")
                 version = cur.fetchone()[0]
+        else:
+            # Explicit: an unhandled engine must never fall through to
+            # another engine's driver and dial it with the wrong protocol.
+            raise ConnectionTestError(f"Unsupported database type: {rc.db_type}")
     except ConnectionTestError:
         raise
     except Exception as exc:  # driver-specific errors → uniform message
@@ -202,6 +266,20 @@ def list_tables(rc: ResolvedConnection) -> list[str]:
                 )
                 return [r[0] for r in cur.fetchall()]
 
+        if rc.db_type == DBType.SNOWFLAKE:
+            # information_schema is scoped to the connected database, so this
+            # lists the chosen schema only. Snowflake stores unquoted names
+            # upper-cased; compare case-insensitively so a user who typed
+            # 'public' still matches the 'PUBLIC' schema.
+            with closing(_connect_snowflake(rc)) as conn, closing(conn.cursor()) as cur:
+                cur.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE UPPER(table_schema) = UPPER(%s) "
+                    "AND table_type = 'BASE TABLE' ORDER BY table_name",
+                    (snowflake_schema(rc),),
+                )
+                return [r[0] for r in cur.fetchall()]
+
         if rc.db_type == DBType.MONGODB:
             client = _mongo_client(rc)
             try:
@@ -226,6 +304,8 @@ def list_columns(rc: ResolvedConnection, table: str) -> list[ColumnInfo]:
             return _mysql_columns(rc, table)
         if rc.db_type == DBType.SQLITE:
             return _sqlite_columns(rc, table)
+        if rc.db_type == DBType.SNOWFLAKE:
+            return _snowflake_columns(rc, table)
         if rc.db_type == DBType.MONGODB:
             return _mongo_fields(rc, table)
     except ConnectionTestError:
@@ -262,8 +342,16 @@ def count_rows(rc: ResolvedConnection, table: str, conditions: list[dict] | None
             quoted, connect = f"`{ident}`", _connect_mysql
         elif rc.db_type == DBType.POSTGRES:
             quoted, connect = f'"{ident}"', _connect_postgres
-        else:  # sqlite
+        elif rc.db_type == DBType.SNOWFLAKE:
+            # Left unquoted on purpose: Snowflake folds unquoted identifiers to
+            # upper case, which is how discovery reports them and how the
+            # migration engine references them. Quoting here would make the
+            # name case-sensitive and break on tables created unquoted.
+            quoted, connect = _snowflake_table(rc, ident), _connect_snowflake
+        elif rc.db_type == DBType.SQLITE:
             quoted, connect = f'"{ident}"', _connect_sqlite
+        else:
+            raise ConnectionTestError(f"Unsupported database type: {rc.db_type}")
 
         where, params = filters.render_native_sql(conditions, rc.db_type)
         sql = f"SELECT COUNT(*) FROM {quoted}"
@@ -309,6 +397,16 @@ def table_exists(rc: ResolvedConnection, table: str) -> bool:
                 )
                 return cur.fetchone() is not None
 
+        if rc.db_type == DBType.SNOWFLAKE:
+            with closing(_connect_snowflake(rc)) as conn, closing(conn.cursor()) as cur:
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE UPPER(table_schema) = UPPER(%s) "
+                    "AND UPPER(table_name) = UPPER(%s)",
+                    (snowflake_schema(rc), ident),
+                )
+                return cur.fetchone() is not None
+
         if rc.db_type == DBType.SQLITE:
             with closing(_connect_sqlite(rc)) as conn, closing(conn.cursor()) as cur:
                 cur.execute(
@@ -336,6 +434,7 @@ def execute_ddl(rc: ResolvedConnection, statement: str) -> None:
         DBType.POSTGRES: _connect_postgres,
         DBType.MYSQL: _connect_mysql,
         DBType.SQLITE: _connect_sqlite,
+        DBType.SNOWFLAKE: _connect_snowflake,
     }.get(rc.db_type)
     if connect is None:
         raise ConnectionTestError(f"Cannot execute DDL against {rc.db_type}.")
@@ -430,4 +529,51 @@ def _mongo_fields(rc: ResolvedConnection, collection: str) -> list[ColumnInfo]:
     return [
         ColumnInfo(name=k, type=v, primary_key=(k == "_id"))
         for k, v in sorted(seen.items())
+    ]
+
+
+def _snowflake_columns(rc: ResolvedConnection, table: str) -> list[ColumnInfo]:
+    """Columns + primary key for one Snowflake table.
+
+    Snowflake's ``INFORMATION_SCHEMA`` has no ``KEY_COLUMN_USAGE`` view, so the
+    primary key has to come from ``SHOW PRIMARY KEYS``, whose result set is
+    positional — the column name is field 5 ("column_name"). A failure there is
+    swallowed: a missing PK only costs us the ``PRIMARY KEY`` clause in
+    generated DDL, which is not worth failing the whole discovery for (the role
+    may simply lack the privilege to run SHOW).
+    """
+    schema = snowflake_schema(rc)
+    ident = _safe_identifier(table)
+    with closing(_connect_snowflake(rc)) as conn, closing(conn.cursor()) as cur:
+        cur.execute(
+            "SELECT column_name, data_type, is_nullable "
+            "FROM information_schema.columns "
+            "WHERE UPPER(table_schema) = UPPER(%s) AND UPPER(table_name) = UPPER(%s) "
+            "ORDER BY ordinal_position",
+            (schema, ident),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            raise ConnectionTestError(f"Table '{table}' not found or has no columns.")
+
+        pk_columns: set[str] = set()
+        try:
+            cur.execute(f"SHOW PRIMARY KEYS IN TABLE {schema}.{ident}")
+            name_index = next(
+                (i for i, d in enumerate(cur.description) if d[0].lower() == "column_name"),
+                None,
+            )
+            if name_index is not None:
+                pk_columns = {r[name_index] for r in cur.fetchall()}
+        except Exception:  # noqa: BLE001 — PK detail is best-effort, see docstring
+            pk_columns = set()
+
+    return [
+        ColumnInfo(
+            name=r[0],
+            type=r[1],
+            nullable=(str(r[2]).upper() == "YES"),
+            primary_key=(r[0] in pk_columns),
+        )
+        for r in rows
     ]
